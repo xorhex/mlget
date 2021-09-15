@@ -53,7 +53,7 @@ go build
 
 from the cloned directory to compile the application and `./mlget` to run it.
 
-#### Setup
+#### Setup Config
 
 Run mlget on the commandline without any flags to have it generate the yaml config template.
 
