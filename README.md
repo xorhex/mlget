@@ -44,7 +44,14 @@ Only Malware Bazaar does not require a key, the rest require a key.  The config 
 
 #### Build
 
-Assuming golang is installed and this repo is checked out; simply run `go build` to compile the application and `./mlget` to run it.
+Assuming golang is installed and this repo is checked out; simply run:
+```
+go get -u
+go mod tidy
+go build
+```
+
+from the cloned directory to compile the application and `./mlget` to run it.
 
 #### Setup
 
