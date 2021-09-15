@@ -26,7 +26,7 @@
 
 ### What is it
 
-Use mlget to query multiple sources for a given malware hash and download it.  The thought is to save time quering each source individually.
+Use mlget to query multiple sources for a given malware hash and download it.  The thought is to save time querying each source individually.
 
 Currently queries:
 
@@ -40,7 +40,7 @@ Currently queries:
 - ps (PolySwarm)
 - iq (InquestLabs)
 
-Only Malware Bazaar does not require a key, the rest require a key.  The config file needs to be placed in the user's home directory (escentually where `os.UserHomeDir()` resolves to).
+Only Malware Bazaar does not require a key, the rest require a key.  The config file needs to be placed in the user's home directory (essentially where `os.UserHomeDir()` resolves to).
 
 #### Build
 
@@ -51,7 +51,7 @@ Assuming golang is installed and this report checked out; simply run `go build` 
 Run mlget on the commandline without any flags to have it generate the yaml config template.
 
 ```
-> ./mlget 
+> ./mlget
 Config does not exist.  Create config? [Y|n]
 ```
 
@@ -148,7 +148,7 @@ mlget -d tg e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7
 
 #### Hashes from a file
 
-Hashes can be read from both the commandline and a file (one hash per line) at the same time
+Hashes can be read from both the command line and a file (one hash per line) at the same time
 
 ```
 mlget -r hashes.txt e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
