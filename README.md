@@ -62,7 +62,7 @@ Run mlget on the commandline without any flags to have it generate the yaml conf
 Config does not exist.  Create config? [Y|n]
 ```
 
-Hit enter and it will create the config (./mlget in the user's home dir)
+Hit enter and it will create the config, `.mlget.yml`, in the user's home dir.
 
 ```
 Created /home/dir/.mlget.yml.  Make sure to fill out the API keys for the services you want to use.
