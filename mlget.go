@@ -1,0 +1,1265 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/yeka/zip"
+	"gopkg.in/yaml.v2"
+)
+
+type Config struct {
+	MalShare struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"malshare"`
+	MalwareBazar struct {
+		Host string `yaml:"host"`
+	} `yaml:"malwarebazar"`
+	MWDB struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"mwdb"`
+	VT struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"virustotal"`
+	Triage struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"triage"`
+	HybridAnalysis struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"hybridanalysis"`
+	PolySwarm struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"polyswarm"`
+	CapeSandbox struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"capesandbox"`
+	InquestLabs struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"inquestlabs"`
+	UploadToMWDBOption struct {
+		ApiKey string `yaml:"api"`
+		Host   string `yaml:"host"`
+	} `yaml:"uploadtomwdb"`
+}
+
+type InquestLabs struct {
+	Data *InquestLabsQueryData `json:"data"`
+}
+
+type InquestLabsQueryData struct {
+	Sha256 string `json:"sha256"`
+}
+
+type HybridAnalysis struct {
+	Submit_name string `json:"submit_name"`
+	Md5         string `json:"md5"`
+	Sha1        string `json:"sha1"`
+	Sha256      string `json:"sha256"`
+	Sha512      string `json:"sha512"`
+}
+
+type MalwareBazarQuery struct {
+	Data *MalwareBazarQueryData `json:"data"`
+}
+
+type MalwareBazarQueryData struct {
+	Sha256_hash   string `json:"sha256_hash"`
+	Sha3_384_hash string `json:"sha3_384_hash"`
+	Sha1_hash     string `json:"sha1_hash"`
+	Md5_hash      string `json:"md5_hash"`
+	File_name     string `json:"file_name"`
+}
+
+type TriageQuery struct {
+	Data []TriageQueryData `json:"data"`
+}
+
+type TriageQueryData struct {
+	Id       string `json:"id"`
+	Kind     string `json:"kind"`
+	Filename string `json:"filename"`
+}
+
+var apiFlag string
+var helpFlag bool
+var checkConfFlag bool
+var doNotExtractFlag bool
+var inputFileFlag string
+var outputFileFlag bool
+var uploadToMWDBAndDelete bool
+var uploadToMWDB bool
+var readFromFileAndUpdateWithNotFoundHashes string
+
+func usage() {
+	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
+	fmt.Println("")
+
+	fmt.Printf("Usage: %s [OPTIONS] argument ...\n", os.Args[0])
+	flag.PrintDefaults()
+
+	fmt.Println("")
+	fmt.Println("Example Usage: mlget <sha256>")
+	fmt.Println("Example Usage: mlget -d mb <sha256>")
+}
+
+func init() {
+	flag.StringVar(&apiFlag, "d", "", "The service to download the malware from.\n  Must be one of:\n  - tg (Triage)\n  - mb (Malware Bazaar)\n  - ms (Malshare)\n  - ha (HybirdAnlysis)\n  - vt (VirusTotal)\n  - cp (Cape Sandbox)\n  - mw (Malware Database)\n  - ps (PolySwarm)\n  - iq (InquestLabs)\nIf omitted, all services will be tried.")
+	flag.StringVar(&inputFileFlag, "r", "", "Read in a file of hashes (one per line)")
+	flag.BoolVar(&outputFileFlag, "o", false, "Write to a file the hashes not found (for later use with the -r flag)")
+	flag.BoolVar(&helpFlag, "h", false, "Print the help message")
+	flag.BoolVar(&checkConfFlag, "c", false, "Parse and print the config file")
+	flag.BoolVar(&doNotExtractFlag, "ne", false, "Do not extract malware from archive file.\nCurrently this only effects MalwareBazaar and HybridAnalysis")
+	flag.BoolVar(&uploadToMWDB, "u", false, "Upload downloaded files to the MWDB instance specified in the mlget.yml file.")
+	flag.StringVar(&readFromFileAndUpdateWithNotFoundHashes, "ru", "", "Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).")
+	flag.BoolVar(&uploadToMWDBAndDelete, "ud", false, "Upload downloaded files to the MWDB instance specified in the mlget.yml file.\nDelete the files after successful upload")
+}
+
+func main() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	var cfg Config
+	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+
+	flag.Parse()
+
+	if helpFlag {
+		usage()
+		return
+	}
+
+	if checkConfFlag {
+		fmt.Printf("%+v", cfg)
+
+		return
+	}
+
+	hashes := flag.Args()
+
+	if inputFileFlag != "" {
+		hshs, err := readFileForHashes(inputFileFlag)
+		if err != nil {
+			fmt.Printf("Error reading from %s\n", inputFileFlag)
+			fmt.Println(err)
+		} else {
+			hashes = append(hashes, hshs...)
+		}
+	} else if readFromFileAndUpdateWithNotFoundHashes != "" {
+		hshs, err := readFileForHashes(readFromFileAndUpdateWithNotFoundHashes)
+		if err != nil {
+			fmt.Printf("Error reading from %s\n", readFromFileAndUpdateWithNotFoundHashes)
+			fmt.Println(err)
+		} else {
+			hashes = append(hashes, hshs...)
+		}
+	}
+
+	var notFoundHashes []string
+
+	if len(hashes) == 0 {
+		fmt.Println("No hashes found")
+		usage()
+		return
+	}
+
+	for _, h := range hashes {
+		ht, err := hashType(h)
+		if err != nil {
+			fmt.Printf("\n Skipping %s because it's %s\n", h, err)
+			continue
+		}
+
+		var filename string
+		var found bool
+
+		fmt.Printf("\nLook up %s (%s)\n", h, ht)
+		if apiFlag != "" {
+			fmt.Printf("Looking on %s\n", apiFlag)
+			switch apiFlag {
+			case "mb":
+				found, filename = malwareBazaar(cfg.MalwareBazar.Host, h, ht, doNotExtractFlag)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+			case "ms":
+				found, filename = malshare(cfg.MalShare.Host, cfg.MalShare.ApiKey, h)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+			case "tg":
+				found, filename = traige(cfg.Triage.Host, cfg.Triage.ApiKey, h, ht)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+			case "ha":
+				found, filename = hybridAnlysis(cfg.HybridAnalysis.Host, cfg.HybridAnalysis.ApiKey, h, ht, doNotExtractFlag)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+			case "ps":
+				found, filename = polyswarm(cfg.PolySwarm.Host, cfg.PolySwarm.ApiKey, h, ht)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+			case "mw":
+				found, filename = mwdb(cfg.MWDB.Host, cfg.MWDB.ApiKey, h, ht)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+			case "vt":
+				found, filename = virustotal(cfg.VT.Host, cfg.VT.ApiKey, h)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+			case "iq":
+				found, filename = inquestlabs(cfg.InquestLabs.Host, cfg.InquestLabs.ApiKey, h, ht)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+			case "cp":
+				found, filename = capesandbox(cfg.CapeSandbox.Host, cfg.CapeSandbox.ApiKey, h, ht)
+				if !found {
+					fmt.Println("    [!] Not Found")
+					notFoundHashes = append(notFoundHashes, h)
+				}
+
+			}
+			if uploadToMWDB || uploadToMWDBAndDelete {
+				uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+			}
+		} else {
+			fmt.Println("Querying all services")
+
+			fmt.Println("  [*] MalwareBazaar...")
+			found, filename = malwareBazaar(cfg.MalwareBazar.Host, h, ht, doNotExtractFlag)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			fmt.Println("  [*] MWDB ...")
+			found, filename = mwdb(cfg.MWDB.Host, cfg.MalShare.ApiKey, h, ht)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			fmt.Println("  [*] Cape Sandbox...")
+			found, filename = capesandbox(cfg.CapeSandbox.Host, cfg.CapeSandbox.ApiKey, h, ht)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			fmt.Println("  [*] MalShare...")
+			found, filename = malshare(cfg.MalShare.Host, cfg.MalShare.ApiKey, h)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			fmt.Println("  [*] Triage...")
+			found, filename = traige(cfg.Triage.Host, cfg.Triage.ApiKey, h, ht)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			fmt.Println("  [*] Hybrid Analysis...")
+			found, filename = hybridAnlysis(cfg.HybridAnalysis.Host, cfg.HybridAnalysis.ApiKey, h, ht, doNotExtractFlag)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			fmt.Println("  [*] InquestLabs...")
+			found, filename = inquestlabs(cfg.InquestLabs.Host, cfg.InquestLabs.ApiKey, h, ht)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			fmt.Println("  [*] VirusTotal...")
+			found, filename = virustotal(cfg.VT.Host, cfg.VT.ApiKey, h)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			fmt.Println("  [*] PolySwarm...")
+			found, filename = polyswarm(cfg.PolySwarm.Host, cfg.PolySwarm.ApiKey, h, ht)
+			if found {
+				if uploadToMWDB || uploadToMWDBAndDelete {
+					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				continue
+			}
+
+			notFoundHashes = append(notFoundHashes, h)
+		}
+	}
+
+	if len(notFoundHashes) > 0 {
+		fmt.Printf("\nHashes not found!\n")
+		for i, s := range notFoundHashes {
+			fmt.Printf("    %d: %s\n", i, s)
+		}
+	}
+	if readFromFileAndUpdateWithNotFoundHashes != "" {
+		err := writeUnfoundHashesToFile(readFromFileAndUpdateWithNotFoundHashes, notFoundHashes)
+		if err != nil {
+			fmt.Println("Error writing unfound hashes to file")
+			fmt.Println(err)
+		}
+		fmt.Printf("\n\n%s refreshed to show only the hashes not found.\n", readFromFileAndUpdateWithNotFoundHashes)
+
+	} else if outputFileFlag && len(notFoundHashes) > 0 {
+		var filename string
+		if inputFileFlag != "" {
+			filename = time.Now().Format("2006-01-02__3_4_5__pm__") + inputFileFlag
+		} else {
+			filename = time.Now().Format("2006-01-02__3_4_5__pm") + "_not_found_hashes.txt"
+		}
+		err := writeUnfoundHashesToFile(filename, notFoundHashes)
+		if err != nil {
+			fmt.Println("Error writing unfound hashes to file")
+			fmt.Println(err)
+		}
+		fmt.Printf("\n\nUnfound hashes written to %s\n", filename)
+	}
+}
+
+func capesandbox(uri string, api string, hash string, ht string) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+	return capesandboxDownload(uri, api, hash, ht)
+}
+
+func capesandboxDownload(uri string, api string, hash string, ht string) (bool, string) {
+	query := uri + "/files/get/" + ht + "/" + hash + "/"
+
+	request, err := http.NewRequest("GET", query, nil)
+	if err != nil {
+		fmt.Println(err)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", "Token "+api)
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	defer response.Body.Close()
+
+	if response.Header["Content-Type"][0] == "application/json" {
+		return false, ""
+	}
+
+	if response.StatusCode == http.StatusOK {
+
+		error = writeToFile(response.Body, hash)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		fmt.Printf("    [+] Downloaded %s\n", hash)
+		return true, hash
+	} else {
+		return false, ""
+	}
+}
+
+func inquestlabs(uri string, api string, hash string, ht string) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	var sha256 string
+	if ht != "sha256" {
+		fmt.Printf("    [-] Looking up sha256 hash for %s\n", hash)
+
+		query := uri + "/dfi/search/hash/" + ht + "?hash=" + hash
+
+		_, error := url.ParseQuery(query)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		request, err := http.NewRequest("GET", query, nil)
+		if err != nil {
+			fmt.Println(err)
+			return false, ""
+		}
+
+		client := &http.Client{}
+		response, error := client.Do(request)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		defer response.Body.Close()
+
+		if response.StatusCode == http.StatusOK {
+
+			byteValue, _ := ioutil.ReadAll(response.Body)
+
+			var data = HybridAnalysis{}
+			error = json.Unmarshal(byteValue, &data)
+
+			if error != nil {
+				fmt.Println(error)
+				return false, ""
+			}
+
+			if data.Sha256 == "" {
+				return false, ""
+			}
+			sha256 = data.Sha256
+			fmt.Printf("    [-] Using hash %s\n", sha256)
+
+		}
+	} else {
+		sha256 = hash
+	}
+	if sha256 != "" {
+		return inquestlabsDownload(uri, api, sha256)
+	}
+	return false, ""
+}
+
+func inquestlabsDownload(uri string, api string, hash string) (bool, string) {
+	query := uri + "/dfi/download?sha256=" + hash
+
+	_, error := url.ParseQuery(query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request, err := http.NewRequest("GET", query, nil)
+	if err != nil {
+		fmt.Println(err)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", api)
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+
+		error = writeToFile(response.Body, hash)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		fmt.Printf("    [+] Downloaded %s\n", hash)
+		return true, hash
+	} else {
+		return false, ""
+	}
+}
+
+func virustotal(uri string, api string, hash string) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+	return virustotalDownload(uri, api, hash)
+}
+
+func virustotalDownload(uri string, api string, hash string) (bool, string) {
+	query := uri + "/files/" + hash + "/download"
+
+	request, err := http.NewRequest("GET", query, nil)
+	if err != nil {
+		fmt.Println(err)
+		return false, ""
+	}
+
+	request.Header.Set("x-apikey", api)
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+
+		error = writeToFile(response.Body, hash)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		fmt.Printf("    [+] Downloaded %s\n", hash)
+		return true, hash
+	} else {
+		return false, ""
+	}
+}
+
+func mwdb(uri string, api string, hash string, ht string) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+	return mwdbDownload(uri, api, hash)
+}
+
+func mwdbDownload(uri string, api string, hash string) (bool, string) {
+	query := uri + "/file/" + hash + "/download"
+
+	request, err := http.NewRequest("GET", query, nil)
+	if err != nil {
+		fmt.Println(err)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", "Bearer "+api)
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+
+		error = writeToFile(response.Body, hash)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		fmt.Printf("    [+] Downloaded %s\n", hash)
+		return true, hash
+	} else {
+		return false, ""
+	}
+}
+
+func polyswarm(uri string, api string, hash string, ht string) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+	return polyswarmDownload(uri, api, hash, ht)
+}
+
+func polyswarmDownload(uri string, api string, hash string, ht string) (bool, string) {
+	query := "/download/" + ht + "/" + hash
+
+	_, error := url.ParseQuery(query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request, err := http.NewRequest("GET", uri+query, nil)
+	if err != nil {
+		fmt.Println(err)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", api)
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+
+		error = writeToFile(response.Body, hash)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		fmt.Printf("    [+] Downloaded %s\n", hash)
+		return true, hash
+	} else {
+		return false, ""
+	}
+}
+
+func hybridAnlysis(uri string, api string, hash string, ht string, doNotExtract bool) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	var sha256 string
+	if ht != "sha256" {
+		fmt.Printf("    [-] Looking up sha256 hash for %s\n", hash)
+
+		pData := []byte("hash=" + hash)
+		request, error := http.NewRequest("POST", uri+"/search/hash", bytes.NewBuffer(pData))
+
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		request.Header.Set("Content-Type", "application/json; charset=UTF-8")
+		request.Header.Set("user-agent", "Falcon Sandbox")
+		request.Header.Set("api-key", api)
+		client := &http.Client{}
+		response, error := client.Do(request)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		defer response.Body.Close()
+
+		byteValue, _ := ioutil.ReadAll(response.Body)
+
+		var data = HybridAnalysis{}
+		error = json.Unmarshal(byteValue, &data)
+
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		if data.Sha256 == "" {
+			return false, ""
+		}
+		sha256 = data.Sha256
+		fmt.Printf("    [-] Using hash %s\n", sha256)
+
+	} else {
+		sha256 = hash
+	}
+	if sha256 != "" {
+		return hybridAnlysisDownload(uri, api, sha256, doNotExtract)
+	}
+	return false, ""
+}
+
+func hybridAnlysisDownload(uri string, api string, hash string, extract bool) (bool, string) {
+	request, error := http.NewRequest("GET", uri+"/overview/"+hash+"/sample", nil)
+
+	request.Header.Set("accept", "application/gzip")
+	request.Header.Set("user-agent", "Falcon Sandbox")
+	request.Header.Set("api-key", api)
+
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return false, ""
+	}
+
+	error = writeToFile(response.Body, hash+".gzip")
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	if doNotExtractFlag {
+		fmt.Printf("    [+] Downloaded %s\n", hash+".gzip")
+		return true, hash + ".gzip"
+	} else {
+		fmt.Println("    [-] Extracting...")
+		err := extractGzip(hash)
+		if err != nil {
+			fmt.Println(error)
+			return false, ""
+		} else {
+			fmt.Printf("    [-] Extracted %s\n", hash)
+		}
+		os.Remove(hash + ".gzip")
+		fmt.Printf("    [+] Downloaded %s\n", hash)
+		return true, hash
+
+	}
+}
+
+func traige(uri string, api string, hash string, ht string) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	// Look up hash to get Sample ID
+	query := "query=" + ht + ":" + hash
+	_, error := url.ParseQuery(query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	request, error := http.NewRequest("GET", uri+"/search?"+query, nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", "Bearer "+api)
+
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+
+		byteValue, error := ioutil.ReadAll(response.Body)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		var data = TriageQuery{}
+		error = json.Unmarshal(byteValue, &data)
+
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		if len(data.Data) > 0 {
+			sampleId := data.Data[0].Id
+			fmt.Printf("    [-] Hash %s Sample ID: %s\n", hash, sampleId)
+
+			// Download Sample using Sample ID
+			return traigeDownload(uri, api, sampleId, hash)
+		} else {
+			return false, ""
+		}
+	} else {
+		return false, ""
+	}
+}
+
+func traigeDownload(uri string, api string, sampleId string, hash string) (bool, string) {
+	request, error := http.NewRequest("GET", uri+"/samples/"+sampleId+"/sample", nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", "Bearer "+api)
+
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	error = writeToFile(response.Body, hash)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	fmt.Printf("    [+] Downloaded %s\n", hash)
+	return true, hash
+}
+
+func malshare(url string, api string, hash string) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	return malshareDownload(url, api, hash)
+}
+
+func malshareDownload(uri string, api string, hash string) (bool, string) {
+	query := "api_key=" + api + "&action=getfile&hash=" + hash
+
+	_, error := url.ParseQuery(query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	client := &http.Client{}
+	response, error := client.Get(uri + "/api.php?" + query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+
+		error = writeToFile(response.Body, hash)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		fmt.Printf("    [+] Downloaded %s\n", hash)
+		return true, hash
+	} else {
+		return false, ""
+	}
+}
+
+func malwareBazaar(url string, hash string, hashType string, doNotExtract bool) (bool, string) {
+	var sha256 string
+	if hashType != "sha256" {
+		fmt.Printf("    [-] Looking up sha256 hash for %s\n", hash)
+
+		pData := []byte("query=get_info&hash=" + hash)
+		request, error := http.NewRequest("POST", url, bytes.NewBuffer(pData))
+
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		request.Header.Set("Content-Type", "application/json; charset=UTF-8")
+		client := &http.Client{}
+		response, error := client.Do(request)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		defer response.Body.Close()
+
+		byteValue, _ := ioutil.ReadAll(response.Body)
+
+		var data = MalwareBazarQuery{}
+		error = json.Unmarshal(byteValue, &data)
+
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		if data.Data == nil {
+			return false, ""
+		}
+		sha256 = data.Data.Sha256_hash
+		fmt.Printf("    [-] Using hash %s\n", sha256)
+
+	} else {
+		sha256 = hash
+	}
+	if sha256 != "" {
+		return malwareBazaarDownload(url, sha256, doNotExtract)
+	}
+	return false, ""
+}
+
+func malwareBazaarDownload(uri string, hash string, doNotExtract bool) (bool, string) {
+	query := "query=get_file&sha256_hash=" + hash
+	values, error := url.ParseQuery(query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	client := &http.Client{}
+	response, error := client.PostForm(uri, values)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.Header["Content-Type"][0] == "application/json" {
+		return false, ""
+	}
+
+	error = writeToFile(response.Body, hash+".zip")
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	fmt.Printf("    [+] Downloaded %s\n", hash+".zip")
+	if doNotExtract {
+		return true, hash + ".zip"
+	} else {
+		fmt.Println("    [-] Extracting...")
+		files, err := extractPwdZip(hash)
+		if err != nil {
+			fmt.Println(err)
+			return false, ""
+		} else {
+			for _, f := range files {
+				fmt.Printf("    [-] Extracted %s\n", f.Name)
+			}
+		}
+		os.Remove(hash + ".zip")
+		return true, hash
+	}
+}
+
+func writeToFile(file io.ReadCloser, filename string) error {
+	// Create the file
+	out, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, file)
+	return err
+}
+
+func extractGzip(hash string) error {
+	r, err := os.Open(hash + ".gzip")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer r.Close()
+
+	gzreader, e1 := gzip.NewReader(r)
+	if e1 != nil {
+		fmt.Println(e1) // Maybe panic here, depends on your error handling.
+	}
+
+	err = writeToFile(io.NopCloser(gzreader), hash)
+	return err
+}
+
+func extractPwdZip(hash string) ([]*zip.File, error) {
+
+	r, err := zip.OpenReader(hash + ".zip")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer r.Close()
+
+	files := r.File
+
+	for _, f := range r.File {
+		if f.IsEncrypted() {
+			f.SetPassword("infected")
+		}
+
+		r, err := f.Open()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		out, error := os.Create(hash)
+		if error != nil {
+			return nil, error
+		}
+		defer out.Close()
+
+		_, err = io.Copy(out, r)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return files, nil
+}
+
+func hashType(hash string) (string, error) {
+	match, _ := regexp.MatchString("^[A-Fa-f0-9]{64}$", hash)
+	if match {
+		return "sha256", nil
+	}
+	match, _ = regexp.MatchString("^[A-Fa-f0-9]{40}$", hash)
+	if match {
+		return "sha1", nil
+	}
+	match, _ = regexp.MatchString("^[A-Fa-f0-9]{32}$", hash)
+	if match {
+		return "md5", nil
+	}
+	return "", errors.New("not a valid hash")
+}
+
+// parseYAML parses YAML from reader to data structure
+func parseYAML(r io.Reader, str interface{}) error {
+	return yaml.NewDecoder(r).Decode(str)
+}
+
+func parseFile(path string, cfg interface{}) error {
+	// open the configuration file
+	f, err := os.OpenFile(path, os.O_RDONLY|os.O_SYNC, 0)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Printf("Config does not exist.  Create config? [Y|n]")
+			var answer string
+			fmt.Scanln(&answer)
+
+			if answer == "" || answer == "y" || answer == "Y" {
+				filename, err := initConfig()
+				if err != nil {
+					fmt.Println("Not able to create file")
+					fmt.Println(err)
+					panic(err)
+				}
+				fmt.Printf("Created %s.  Make sure to fill out the API keys for the services you want to use.\n", filename)
+				f, err = os.OpenFile(path, os.O_RDONLY|os.O_SYNC, 0)
+				if err != nil {
+					return err
+				}
+			} else {
+				answer = "N"
+			}
+
+		} else {
+			return err
+		}
+	}
+	defer f.Close()
+
+	// parse the file depending on the file type
+	switch ext := strings.ToLower(filepath.Ext(path)); ext {
+	case ".yml":
+		err = parseYAML(f, cfg)
+	default:
+		return fmt.Errorf("file format '%s' doesn't supported by the parser", ext)
+	}
+	if err != nil {
+		return fmt.Errorf("config file parsing error: %s", err.Error())
+	}
+	return nil
+}
+
+func initConfig() (string, error) {
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println(err)
+		return "", err
+	}
+
+	file, err := os.OpenFile(path.Join(home, ".mlget.yml"), os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		fmt.Printf("error creating file: %v\n", err)
+		return "", err
+	}
+	defer file.Close()
+
+	enc := yaml.NewEncoder(file)
+
+	err = enc.Encode(Config{
+		MalShare: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "https://malshare.com", ApiKey: ""},
+		MWDB: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "https://mwdb.cert.pl/api", ApiKey: ""},
+		MalwareBazar: struct {
+			Host string "yaml:\"host\""
+		}{Host: "https://mb-api.abuse.ch/api/v1"},
+		PolySwarm: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "https://api.polyswarm.network/v2", ApiKey: ""},
+		VT: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "https://www.virustotal.com/api/v3", ApiKey: ""},
+		HybridAnalysis: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "https://www.hybrid-analysis.com/api/v2", ApiKey: ""},
+		Triage: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "https://api.tria.ge/v0", ApiKey: ""},
+		InquestLabs: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "https://labs.inquest.net/api", ApiKey: ""},
+		CapeSandbox: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "https://www.capesandbox.com/apiv2", ApiKey: ""},
+		UploadToMWDBOption: struct {
+			ApiKey string "yaml:\"api\""
+			Host   string "yaml:\"host\""
+		}{Host: "", ApiKey: ""},
+	})
+	if err != nil {
+		fmt.Printf("error encoding: %v\n", err)
+		return "", err
+	}
+
+	return file.Name(), nil
+}
+
+func readFileForHashes(filename string) ([]string, error) {
+	hashes := []string{}
+	file, err := os.Open(filename)
+	if err != nil {
+		fmt.Println("Error reading file")
+		fmt.Println(err)
+	}
+
+	defer func() ([]string, error) {
+		if err = file.Close(); err != nil {
+			fmt.Println(err)
+			return nil, err
+		}
+		return nil, nil
+	}()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() { // internally, it advances token based on sperator
+		hash := scanner.Text()
+		fmt.Printf("Found %s\n", hash) // token in unicode-char
+		hashes = append(hashes, hash)
+	}
+	return hashes, nil
+}
+
+func writeUnfoundHashesToFile(filename string, hashes []string) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	defer w.Flush()
+
+	for _, s := range hashes {
+		w.WriteString(s + "\n")
+	}
+	return nil
+}
+
+func uploadSampleToMWDB(filename string, delete bool, mwdbServer string, auth string) error {
+
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+
+	// this step is very important
+	fileWriter, err := bodyWriter.CreateFormFile("file", filename)
+	if err != nil {
+		fmt.Println("error writing to buffer")
+		return err
+	}
+
+	// open file handle
+	fh, err := os.Open(filename)
+	if err != nil {
+		fmt.Println("error opening file")
+		return err
+	}
+	defer fh.Close()
+
+	//iocopy
+	_, err = io.Copy(fileWriter, fh)
+	if err != nil {
+		return err
+	}
+
+	contentType := bodyWriter.FormDataContentType()
+	bodyWriter.Close()
+
+	request, error := http.NewRequest("POST", mwdbServer+"/file", bodyBuf)
+	if error != nil {
+		fmt.Println(error)
+		return error
+	}
+
+	request.Header.Set("Authorization", "Bearer "+auth)
+	request.Header.Set("Content-Type", contentType)
+
+	client := &http.Client{}
+	resp, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("    [-] %s uploaded to MWDB (%s)\n", filename, mwdbServer)
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("error uploading file - status code %d returned", resp.StatusCode)
+
+	} else {
+		if delete {
+			os.Remove(filename)
+			fmt.Printf("    [-] %s deleted from disk\n", filename)
+		}
+	}
+	return nil
+}
