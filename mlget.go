@@ -6,7 +6,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -20,6 +19,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	flag "github.com/spf13/pflag"
 
 	"github.com/yeka/zip"
 	"gopkg.in/yaml.v2"
@@ -105,6 +106,12 @@ type TriageQueryData struct {
 	Filename string `json:"filename"`
 }
 
+type Hash struct {
+	Hash     string
+	HashType string
+	Tags     []string
+}
+
 var apiFlag string
 var helpFlag bool
 var checkConfFlag bool
@@ -114,6 +121,7 @@ var outputFileFlag bool
 var uploadToMWDBAndDelete bool
 var uploadToMWDB bool
 var readFromFileAndUpdateWithNotFoundHashes string
+var tagsFlag []string
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
@@ -137,6 +145,7 @@ func init() {
 	flag.BoolVar(&uploadToMWDB, "u", false, "Upload downloaded files to the MWDB instance specified in the mlget.yml file.")
 	flag.StringVar(&readFromFileAndUpdateWithNotFoundHashes, "ru", "", "Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).")
 	flag.BoolVar(&uploadToMWDBAndDelete, "ud", false, "Upload downloaded files to the MWDB instance specified in the mlget.yml file.\nDelete the files after successful upload")
+	flag.StringSliceVar(&tagsFlag, "t", []string{}, "Tag the sample when uploading to your own instance of MWDB.")
 }
 
 func main() {
@@ -162,7 +171,9 @@ func main() {
 		return
 	}
 
-	hashes := flag.Args()
+	args := flag.Args()
+
+	hashes := parseHashes(args, tagsFlag)
 
 	if inputFileFlag != "" {
 		hshs, err := readFileForHashes(inputFileFlag)
@@ -182,7 +193,7 @@ func main() {
 		}
 	}
 
-	var notFoundHashes []string
+	var notFoundHashes []Hash
 
 	if len(hashes) == 0 {
 		fmt.Println("No hashes found")
@@ -191,69 +202,76 @@ func main() {
 	}
 
 	for _, h := range hashes {
-		ht, err := hashType(h)
-		if err != nil {
-			fmt.Printf("\n Skipping %s because it's %s\n", h, err)
+		// If upload to MWDB is filled out, check and see if the hash has already been uploaded
+		alreadyUploaded := preUploadToMWDB(cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey, h.Hash)
+		// If found, then skip trying to download it.
+		if alreadyUploaded {
+			if len(h.Tags) == 0 {
+				fmt.Printf("    [!] Skipping %s\n", h)
+			} else {
+				// Add Tags
+				addTagToSampleInMWDB(h, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+			}
 			continue
 		}
 
 		var filename string
 		var found bool
 
-		fmt.Printf("\nLook up %s (%s)\n", h, ht)
+		fmt.Printf("\nLook up %s (%s)\n", h.Hash, h.HashType)
 		if apiFlag != "" {
 			fmt.Printf("Looking on %s\n", apiFlag)
 			switch apiFlag {
 			case "mb":
-				found, filename = malwareBazaar(cfg.MalwareBazar.Host, h, ht, doNotExtractFlag)
+				found, filename = malwareBazaar(cfg.MalwareBazar.Host, h.Hash, h.HashType, doNotExtractFlag)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
 				}
 			case "ms":
-				found, filename = malshare(cfg.MalShare.Host, cfg.MalShare.ApiKey, h)
+				found, filename = malshare(cfg.MalShare.Host, cfg.MalShare.ApiKey, h.Hash)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
 				}
 			case "tg":
-				found, filename = traige(cfg.Triage.Host, cfg.Triage.ApiKey, h, ht)
+				found, filename = traige(cfg.Triage.Host, cfg.Triage.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
 				}
 			case "ha":
-				found, filename = hybridAnlysis(cfg.HybridAnalysis.Host, cfg.HybridAnalysis.ApiKey, h, ht, doNotExtractFlag)
+				found, filename = hybridAnlysis(cfg.HybridAnalysis.Host, cfg.HybridAnalysis.ApiKey, h.Hash, h.HashType, doNotExtractFlag)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
 				}
 			case "ps":
-				found, filename = polyswarm(cfg.PolySwarm.Host, cfg.PolySwarm.ApiKey, h, ht)
+				found, filename = polyswarm(cfg.PolySwarm.Host, cfg.PolySwarm.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
 				}
 			case "mw":
-				found, filename = mwdb(cfg.MWDB.Host, cfg.MWDB.ApiKey, h, ht)
+				found, filename = mwdb(cfg.MWDB.Host, cfg.MWDB.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
 				}
 			case "vt":
-				found, filename = virustotal(cfg.VT.Host, cfg.VT.ApiKey, h)
+				found, filename = virustotal(cfg.VT.Host, cfg.VT.ApiKey, h.Hash)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
 				}
 			case "iq":
-				found, filename = inquestlabs(cfg.InquestLabs.Host, cfg.InquestLabs.ApiKey, h, ht)
+				found, filename = inquestlabs(cfg.InquestLabs.Host, cfg.InquestLabs.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
 				}
 			case "cp":
-				found, filename = capesandbox(cfg.CapeSandbox.Host, cfg.CapeSandbox.ApiKey, h, ht)
+				found, filename = capesandbox(cfg.CapeSandbox.Host, cfg.CapeSandbox.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
 					notFoundHashes = append(notFoundHashes, h)
@@ -261,88 +279,118 @@ func main() {
 
 			}
 			if uploadToMWDB || uploadToMWDBAndDelete {
-				uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				if err != nil {
+					fmt.Printf("    [!] %s", err)
+				}
 			}
 		} else {
 			fmt.Println("Querying all services")
 
 			fmt.Println("  [*] MalwareBazaar...")
-			found, filename = malwareBazaar(cfg.MalwareBazar.Host, h, ht, doNotExtractFlag)
+			found, filename = malwareBazaar(cfg.MalwareBazar.Host, h.Hash, h.HashType, doNotExtractFlag)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
 
 			fmt.Println("  [*] MWDB ...")
-			found, filename = mwdb(cfg.MWDB.Host, cfg.MalShare.ApiKey, h, ht)
+			found, filename = mwdb(cfg.MWDB.Host, cfg.MalShare.ApiKey, h.Hash, h.HashType)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
 
 			fmt.Println("  [*] Cape Sandbox...")
-			found, filename = capesandbox(cfg.CapeSandbox.Host, cfg.CapeSandbox.ApiKey, h, ht)
+			found, filename = capesandbox(cfg.CapeSandbox.Host, cfg.CapeSandbox.ApiKey, h.Hash, h.HashType)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
 
 			fmt.Println("  [*] MalShare...")
-			found, filename = malshare(cfg.MalShare.Host, cfg.MalShare.ApiKey, h)
+			found, filename = malshare(cfg.MalShare.Host, cfg.MalShare.ApiKey, h.Hash)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
 
 			fmt.Println("  [*] Triage...")
-			found, filename = traige(cfg.Triage.Host, cfg.Triage.ApiKey, h, ht)
+			found, filename = traige(cfg.Triage.Host, cfg.Triage.ApiKey, h.Hash, h.HashType)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
 
 			fmt.Println("  [*] Hybrid Analysis...")
-			found, filename = hybridAnlysis(cfg.HybridAnalysis.Host, cfg.HybridAnalysis.ApiKey, h, ht, doNotExtractFlag)
+			found, filename = hybridAnlysis(cfg.HybridAnalysis.Host, cfg.HybridAnalysis.ApiKey, h.Hash, h.HashType, doNotExtractFlag)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
 
 			fmt.Println("  [*] InquestLabs...")
-			found, filename = inquestlabs(cfg.InquestLabs.Host, cfg.InquestLabs.ApiKey, h, ht)
+			found, filename = inquestlabs(cfg.InquestLabs.Host, cfg.InquestLabs.ApiKey, h.Hash, h.HashType)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
 
 			fmt.Println("  [*] VirusTotal...")
-			found, filename = virustotal(cfg.VT.Host, cfg.VT.ApiKey, h)
+			found, filename = virustotal(cfg.VT.Host, cfg.VT.ApiKey, h.Hash)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
 
 			fmt.Println("  [*] PolySwarm...")
-			found, filename = polyswarm(cfg.PolySwarm.Host, cfg.PolySwarm.ApiKey, h, ht)
+			found, filename = polyswarm(cfg.PolySwarm.Host, cfg.PolySwarm.ApiKey, h.Hash, h.HashType)
 			if found {
 				if uploadToMWDB || uploadToMWDBAndDelete {
-					uploadSampleToMWDB(filename, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+					if err != nil {
+						fmt.Printf("    [!] %s", err)
+					}
 				}
 				continue
 			}
@@ -969,6 +1017,40 @@ func malwareBazaarDownload(uri string, hash string, doNotExtract bool) (bool, st
 	}
 }
 
+func preUploadToMWDB(uri string, api string, hash string) bool {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false
+	}
+	return preUploadToMWDBCheck(uri, api, hash)
+}
+
+func preUploadToMWDBCheck(uri string, api string, hash string) bool {
+	query := uri + "/file/" + hash
+
+	request, err := http.NewRequest("GET", query, nil)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	request.Header.Set("Authorization", "Bearer "+api)
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+		fmt.Printf("    [!] File %s already exists in MWDB: %s \n", hash, uri)
+		return true
+	} else {
+		return false
+	}
+}
+
 func writeToFile(file io.ReadCloser, filename string) error {
 	// Create the file
 	out, err := os.Create(filename)
@@ -1163,8 +1245,8 @@ func initConfig() (string, error) {
 	return file.Name(), nil
 }
 
-func readFileForHashes(filename string) ([]string, error) {
-	hashes := []string{}
+func readFileForHashes(filename string) ([]Hash, error) {
+	hashes := []Hash{}
 	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Println("Error reading file")
@@ -1181,14 +1263,17 @@ func readFileForHashes(filename string) ([]string, error) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() { // internally, it advances token based on sperator
-		hash := scanner.Text()
-		fmt.Printf("Found %s\n", hash) // token in unicode-char
-		hashes = append(hashes, hash)
+		text := scanner.Text()
+		if len(strings.Fields(text)) > 1 {
+			hashes = append(hashes, parseHashes(strings.Fields(text)[:0], strings.Fields(text)[1:len(strings.Fields(text))-1])...)
+		} else {
+			hashes = append(hashes, parseHashes(strings.Fields(text)[:0], []string{})...)
+		}
 	}
 	return hashes, nil
 }
 
-func writeUnfoundHashesToFile(filename string, hashes []string) error {
+func writeUnfoundHashesToFile(filename string, hashes []Hash) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -1198,13 +1283,13 @@ func writeUnfoundHashesToFile(filename string, hashes []string) error {
 	w := bufio.NewWriter(f)
 	defer w.Flush()
 
-	for _, s := range hashes {
-		w.WriteString(s + "\n")
+	for _, h := range hashes {
+		w.WriteString(h.Hash + strings.Join(h.Tags, " ") + "\n")
 	}
 	return nil
 }
 
-func uploadSampleToMWDB(filename string, delete bool, mwdbServer string, auth string) error {
+func uploadSampleToMWDB(filename string, hash Hash, delete bool, mwdbServer string, auth string) error {
 
 	bodyBuf := &bytes.Buffer{}
 	bodyWriter := multipart.NewWriter(bodyBuf)
@@ -1248,18 +1333,73 @@ func uploadSampleToMWDB(filename string, delete bool, mwdbServer string, auth st
 		return err
 	}
 
-	fmt.Printf("    [-] %s uploaded to MWDB (%s)\n", filename, mwdbServer)
-
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("error uploading file - status code %d returned", resp.StatusCode)
 
 	} else {
+		fmt.Printf("    [-] %s uploaded to MWDB (%s)\n", filename, mwdbServer)
 		if delete {
 			os.Remove(filename)
 			fmt.Printf("    [-] %s deleted from disk\n", filename)
 		}
 	}
+
+	err = addTagToSampleInMWDB(hash, mwdbServer, auth)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func addTagToSampleInMWDB(hash Hash, mwdbServer string, auth string) error {
+	for _, t := range hash.Tags {
+		query := mwdbServer + "/file/" + hash.HashType + "/" + t
+
+		_, error := url.ParseQuery(query)
+		if error != nil {
+			fmt.Println(error)
+			return error
+		}
+		///api/{type}/{identifier}/tag
+		request, error := http.NewRequest("PUT", query, nil)
+		if error != nil {
+			fmt.Println(error)
+			return error
+		}
+
+		request.Header.Set("Authorization", "Bearer "+auth)
+
+		client := &http.Client{}
+		respTag, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+
+		if respTag.StatusCode == http.StatusOK {
+			fmt.Printf("    [-] %s tagged as %s\n", hash.Hash, t)
+		} else {
+			fmt.Printf("    [!] Failed to tag %s as %s\n", hash.Hash, t)
+		}
+	}
+	return nil
+}
+
+func parseHashes(hashes []string, tags []string) []Hash {
+	parsedHashes := []Hash{}
+	for _, h := range hashes {
+		ht, err := hashType(h)
+		if err != nil {
+			fmt.Printf("\n Skipping %s because it's %s\n", h, err)
+			continue
+		}
+		fmt.Printf("Hash found: %s\n", h) // token in unicode-char
+		if len(tags) > 0 {
+			parsedHashes = append(parsedHashes, Hash{Hash: h, HashType: ht, Tags: tags})
+		} else {
+			parsedHashes = append(parsedHashes, Hash{Hash: h, HashType: ht})
+		}
+	}
+	return parsedHashes
 }
