@@ -13,7 +13,7 @@
 			"mode": "debug",
 			"program": "${fileDirname}",
 			"args":[
-				"--ud", "c54449d52252aa0c8cb554613af4686ea1402f428a72e706bf6dc040d8f26cab"
+				"--ud", "--t", "mimikatz", "B9601E60F87545441BF8579B2F62668C56507F4A"
 			]
 		}
 	]

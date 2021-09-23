@@ -1355,15 +1355,16 @@ func uploadSampleToMWDB(filename string, hash Hash, delete bool, mwdbServer stri
 
 func addTagToSampleInMWDB(hash Hash, mwdbServer string, auth string) error {
 	for _, t := range hash.Tags {
-		query := mwdbServer + "/file/" + hash.HashType + "/" + t
+		query := mwdbServer + "/file/" + hash.Hash + "/tag"
 
 		_, error := url.ParseQuery(query)
 		if error != nil {
 			fmt.Println(error)
 			return error
 		}
-		///api/{type}/{identifier}/tag
-		request, error := http.NewRequest("PUT", query, nil)
+
+		value_json := "{\"tag\":\"" + t + "\"}"
+		request, error := http.NewRequest("PUT", query, strings.NewReader(value_json))
 		if error != nil {
 			fmt.Println(error)
 			return error
