@@ -106,10 +106,67 @@ type TriageQueryData struct {
 	Filename string `json:"filename"`
 }
 
+type CommentItemResponse struct {
+	Author    string `json:"author"`
+	Comment   string `json:"comment"`
+	Id        int32  `json:"id"`
+	Timestamp string `json:"timestamp"`
+}
+
+type Hashes struct {
+	Hashes []Hash
+}
+
+func AddHash(hashes Hashes, hash Hash) (Hashes, error) {
+	if hashes.hashExists(hash.Hash) {
+		hsh, err := hashes.getByHash(hash.Hash)
+		if err != nil {
+			return hashes, err
+		}
+		for _, t := range hash.Tags {
+			if !hsh.TagExists(t) {
+				hsh.Tags = append(hsh.Tags, t)
+			}
+		}
+
+	} else {
+		hashes.Hashes = append(hashes.Hashes, hash)
+	}
+	return hashes, nil
+}
+
+func (hs Hashes) hashExists(hash string) bool {
+	for _, h := range hs.Hashes {
+		if h.Hash == hash {
+			return true
+		}
+	}
+	return false
+}
+
+func (hs Hashes) getByHash(hash string) (Hash, error) {
+	for _, h := range hs.Hashes {
+		if h.Hash == hash {
+			return h, nil
+		}
+	}
+	return Hash{}, fmt.Errorf("Hash not found")
+}
+
 type Hash struct {
 	Hash     string
 	HashType string
 	Tags     []string
+	Comments []string
+}
+
+func (h Hash) TagExists(tag string) bool {
+	for _, t := range h.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
 }
 
 var apiFlag string
@@ -122,30 +179,33 @@ var uploadToMWDBAndDelete bool
 var uploadToMWDB bool
 var readFromFileAndUpdateWithNotFoundHashes string
 var tagsFlag []string
+var commentsFlag []string
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
 	fmt.Println("")
 
-	fmt.Printf("Usage: %s [OPTIONS] argument ...\n", os.Args[0])
+	fmt.Printf("Usage: %s [OPTIONS] hash_arguments...\n", os.Args[0])
 	flag.PrintDefaults()
 
 	fmt.Println("")
 	fmt.Println("Example Usage: mlget <sha256>")
-	fmt.Println("Example Usage: mlget -d mb <sha256>")
+	fmt.Println("Example Usage: mlget --from mb <sha256>")
+	fmt.Println("Example Usage: mlget --tag tag_one --tag tag_two --uploaddelete <sha256> <sha1> <md5>")
 }
 
 func init() {
-	flag.StringVar(&apiFlag, "d", "", "The service to download the malware from.\n  Must be one of:\n  - tg (Triage)\n  - mb (Malware Bazaar)\n  - ms (Malshare)\n  - ha (HybirdAnlysis)\n  - vt (VirusTotal)\n  - cp (Cape Sandbox)\n  - mw (Malware Database)\n  - ps (PolySwarm)\n  - iq (InquestLabs)\nIf omitted, all services will be tried.")
-	flag.StringVar(&inputFileFlag, "r", "", "Read in a file of hashes (one per line)")
-	flag.BoolVar(&outputFileFlag, "o", false, "Write to a file the hashes not found (for later use with the -r flag)")
-	flag.BoolVar(&helpFlag, "h", false, "Print the help message")
-	flag.BoolVar(&checkConfFlag, "c", false, "Parse and print the config file")
-	flag.BoolVar(&doNotExtractFlag, "ne", false, "Do not extract malware from archive file.\nCurrently this only effects MalwareBazaar and HybridAnalysis")
-	flag.BoolVar(&uploadToMWDB, "u", false, "Upload downloaded files to the MWDB instance specified in the mlget.yml file.")
-	flag.StringVar(&readFromFileAndUpdateWithNotFoundHashes, "ru", "", "Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).")
-	flag.BoolVar(&uploadToMWDBAndDelete, "ud", false, "Upload downloaded files to the MWDB instance specified in the mlget.yml file.\nDelete the files after successful upload")
-	flag.StringSliceVar(&tagsFlag, "t", []string{}, "Tag the sample when uploading to your own instance of MWDB.")
+	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - tg (Triage)\n  - mb (Malware Bazaar)\n  - ms (Malshare)\n  - ha (HybirdAnlysis)\n  - vt (VirusTotal)\n  - cp (Cape Sandbox)\n  - mw (Malware Database)\n  - ps (PolySwarm)\n  - iq (InquestLabs)\nIf omitted, all services will be tried.")
+	flag.StringVar(&inputFileFlag, "read", "", "Read in a file of hashes (one per line)")
+	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the -r flag)")
+	flag.BoolVar(&helpFlag, "help", false, "Print the help message")
+	flag.BoolVar(&checkConfFlag, "config", false, "Parse and print the config file")
+	flag.BoolVar(&doNotExtractFlag, "noextraction", false, "Do not extract malware from archive file.\nCurrently this only effects MalwareBazaar and HybridAnalysis")
+	flag.BoolVar(&uploadToMWDB, "upload", false, "Upload downloaded files to the MWDB instance specified in the mlget.yml file.")
+	flag.StringVar(&readFromFileAndUpdateWithNotFoundHashes, "readupdate", "", "Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).")
+	flag.BoolVar(&uploadToMWDBAndDelete, "uploaddelete", false, "Upload downloaded files to the MWDB instance specified in the mlget.yml file.\nDelete the files after successful upload")
+	flag.StringSliceVar(&tagsFlag, "tag", []string{}, "Tag the sample when uploading to your own instance of MWDB.")
+	flag.StringSliceVar(&commentsFlag, "comment", []string{}, "Add comment to the sample when uploading to your own instance of MWDB.")
 }
 
 func main() {
@@ -173,44 +233,56 @@ func main() {
 
 	args := flag.Args()
 
-	hashes := parseHashes(args, tagsFlag)
+	hashes := parseArgHashes(args, tagsFlag, commentsFlag)
 
 	if inputFileFlag != "" {
-		hshs, err := readFileForHashes(inputFileFlag)
+		hshs, err := parseFileForHashEntries(inputFileFlag)
 		if err != nil {
 			fmt.Printf("Error reading from %s\n", inputFileFlag)
 			fmt.Println(err)
 		} else {
-			hashes = append(hashes, hshs...)
+			for _, hsh := range hshs {
+				hashes, _ = AddHash(hashes, hsh)
+			}
 		}
 	} else if readFromFileAndUpdateWithNotFoundHashes != "" {
-		hshs, err := readFileForHashes(readFromFileAndUpdateWithNotFoundHashes)
+		hshs, err := parseFileForHashEntries(readFromFileAndUpdateWithNotFoundHashes)
 		if err != nil {
 			fmt.Printf("Error reading from %s\n", readFromFileAndUpdateWithNotFoundHashes)
 			fmt.Println(err)
 		} else {
-			hashes = append(hashes, hshs...)
+			for _, hsh := range hshs {
+				hashes, _ = AddHash(hashes, hsh)
+			}
 		}
 	}
 
-	var notFoundHashes []Hash
+	var notFoundHashes Hashes
 
-	if len(hashes) == 0 {
+	if len(hashes.Hashes) == 0 {
 		fmt.Println("No hashes found")
 		usage()
 		return
 	}
 
-	for _, h := range hashes {
+	for _, h := range hashes.Hashes {
+		fmt.Printf("\nLook up %s (%s)\n", h.Hash, h.HashType)
+
 		// If upload to MWDB is filled out, check and see if the hash has already been uploaded
 		alreadyUploaded := preUploadToMWDB(cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey, h.Hash)
 		// If found, then skip trying to download it.
 		if alreadyUploaded {
-			if len(h.Tags) == 0 {
-				fmt.Printf("    [!] Skipping %s\n", h)
+			if len(h.Tags) == 0 && len(h.Comments) == 0 {
+				fmt.Printf("  [!] Skipping %s\n", h)
 			} else {
-				// Add Tags
-				addTagToSampleInMWDB(h, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				if len(h.Tags) > 0 {
+					// Add Tags
+					addTagsToSampleInMWDB(h, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
+				if len(h.Comments) > 0 {
+					// Add Comments
+					addCommentsToSampleInMWDB(h, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
+				}
 			}
 			continue
 		}
@@ -218,7 +290,6 @@ func main() {
 		var filename string
 		var found bool
 
-		fmt.Printf("\nLook up %s (%s)\n", h.Hash, h.HashType)
 		if apiFlag != "" {
 			fmt.Printf("Looking on %s\n", apiFlag)
 			switch apiFlag {
@@ -226,57 +297,56 @@ func main() {
 				found, filename = malwareBazaar(cfg.MalwareBazar.Host, h.Hash, h.HashType, doNotExtractFlag)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
 			case "ms":
 				found, filename = malshare(cfg.MalShare.Host, cfg.MalShare.ApiKey, h.Hash)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
 			case "tg":
 				found, filename = traige(cfg.Triage.Host, cfg.Triage.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
 			case "ha":
 				found, filename = hybridAnlysis(cfg.HybridAnalysis.Host, cfg.HybridAnalysis.ApiKey, h.Hash, h.HashType, doNotExtractFlag)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
 			case "ps":
 				found, filename = polyswarm(cfg.PolySwarm.Host, cfg.PolySwarm.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
 			case "mw":
 				found, filename = mwdb(cfg.MWDB.Host, cfg.MWDB.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
 			case "vt":
 				found, filename = virustotal(cfg.VT.Host, cfg.VT.ApiKey, h.Hash)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
 			case "iq":
 				found, filename = inquestlabs(cfg.InquestLabs.Host, cfg.InquestLabs.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
 			case "cp":
 				found, filename = capesandbox(cfg.CapeSandbox.Host, cfg.CapeSandbox.ApiKey, h.Hash, h.HashType)
 				if !found {
 					fmt.Println("    [!] Not Found")
-					notFoundHashes = append(notFoundHashes, h)
+					notFoundHashes, _ = AddHash(notFoundHashes, h)
 				}
-
 			}
 			if uploadToMWDB || uploadToMWDBAndDelete {
 				err := uploadSampleToMWDB(filename, h, uploadToMWDBAndDelete, cfg.UploadToMWDBOption.Host, cfg.UploadToMWDBOption.ApiKey)
@@ -395,13 +465,13 @@ func main() {
 				continue
 			}
 
-			notFoundHashes = append(notFoundHashes, h)
+			notFoundHashes, _ = AddHash(notFoundHashes, h)
 		}
 	}
 
-	if len(notFoundHashes) > 0 {
+	if len(notFoundHashes.Hashes) > 0 {
 		fmt.Printf("\nHashes not found!\n")
-		for i, s := range notFoundHashes {
+		for i, s := range notFoundHashes.Hashes {
 			fmt.Printf("    %d: %s\n", i, s)
 		}
 	}
@@ -413,7 +483,7 @@ func main() {
 		}
 		fmt.Printf("\n\n%s refreshed to show only the hashes not found.\n", readFromFileAndUpdateWithNotFoundHashes)
 
-	} else if outputFileFlag && len(notFoundHashes) > 0 {
+	} else if outputFileFlag && len(notFoundHashes.Hashes) > 0 {
 		var filename string
 		if inputFileFlag != "" {
 			filename = time.Now().Format("2006-01-02__3_4_5__pm__") + inputFileFlag
@@ -1019,9 +1089,9 @@ func malwareBazaarDownload(uri string, hash string, doNotExtract bool) (bool, st
 
 func preUploadToMWDB(uri string, api string, hash string) bool {
 	if api == "" {
-		fmt.Println("    [!] !! Missing Key !!")
 		return false
 	}
+	fmt.Printf("  [*] Checking the UploadToMWDB for %s\n", hash)
 	return preUploadToMWDBCheck(uri, api, hash)
 }
 
@@ -1047,6 +1117,7 @@ func preUploadToMWDBCheck(uri string, api string, hash string) bool {
 		fmt.Printf("    [!] File %s already exists in MWDB: %s \n", hash, uri)
 		return true
 	} else {
+		fmt.Println("")
 		return false
 	}
 }
@@ -1245,7 +1316,7 @@ func initConfig() (string, error) {
 	return file.Name(), nil
 }
 
-func readFileForHashes(filename string) ([]Hash, error) {
+func parseFileForHashEntries(filename string) ([]Hash, error) {
 	hashes := []Hash{}
 	file, err := os.Open(filename)
 	if err != nil {
@@ -1261,19 +1332,42 @@ func readFileForHashes(filename string) ([]Hash, error) {
 		return nil, nil
 	}()
 
+	f := func(c rune) bool {
+		return c == '|'
+	}
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() { // internally, it advances token based on sperator
 		text := scanner.Text()
-		if len(strings.Fields(text)) > 1 {
-			hashes = append(hashes, parseHashes(strings.Fields(text)[:0], strings.Fields(text)[1:len(strings.Fields(text))-1])...)
-		} else {
-			hashes = append(hashes, parseHashes(strings.Fields(text)[:0], []string{})...)
+		hash := strings.FieldsFunc(text, f)[0]
+		tags := []string{}
+		comments := []string{}
+		if len(strings.FieldsFunc(text, f)) > 1 {
+			fields := strings.FieldsFunc(text, f)[1:len(strings.FieldsFunc(text, f))]
+			tagSection := false
+			commentSection := false
+			for _, f := range fields {
+				if f == "TAGS" {
+					tagSection = true
+					commentSection = false
+				} else if f == "COMMENTS" {
+					tagSection = false
+					commentSection = true
+				} else if f != "TAGS" && f != "COMMENTS" && tagSection {
+					tags = append(tags, f)
+				} else if f != "TAGS" && f != "COMMENTS" && commentSection {
+					comments = append(comments, f)
+				}
+			}
 		}
+		pHash := Hash{}
+		pHash, err = parseFileHashEntry(hash, tags, comments)
+		hashes = append(hashes, pHash)
 	}
 	return hashes, nil
 }
 
-func writeUnfoundHashesToFile(filename string, hashes []Hash) error {
+func writeUnfoundHashesToFile(filename string, hashes Hashes) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -1283,8 +1377,8 @@ func writeUnfoundHashesToFile(filename string, hashes []Hash) error {
 	w := bufio.NewWriter(f)
 	defer w.Flush()
 
-	for _, h := range hashes {
-		w.WriteString(h.Hash + strings.Join(h.Tags, " ") + "\n")
+	for _, h := range hashes.Hashes {
+		w.WriteString(h.Hash + "|TAGS|" + strings.Join(h.Tags, "|") + "|COMMENTS|" + strings.Join(h.Comments, "|") + "\n")
 	}
 	return nil
 }
@@ -1346,14 +1440,19 @@ func uploadSampleToMWDB(filename string, hash Hash, delete bool, mwdbServer stri
 		}
 	}
 
-	err = addTagToSampleInMWDB(hash, mwdbServer, auth)
+	err = addTagsToSampleInMWDB(hash, mwdbServer, auth)
+	if err != nil {
+		return err
+	}
+
+	err = addCommentsToSampleInMWDB(hash, mwdbServer, auth)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func addTagToSampleInMWDB(hash Hash, mwdbServer string, auth string) error {
+func addTagsToSampleInMWDB(hash Hash, mwdbServer string, auth string) error {
 	for _, t := range hash.Tags {
 		query := mwdbServer + "/file/" + hash.Hash + "/tag"
 
@@ -1387,8 +1486,116 @@ func addTagToSampleInMWDB(hash Hash, mwdbServer string, auth string) error {
 	return nil
 }
 
-func parseHashes(hashes []string, tags []string) []Hash {
-	parsedHashes := []Hash{}
+func addCommentsToSampleInMWDB(hash Hash, mwdbServer string, auth string) error {
+
+	// Get existing comments
+	getQuery := mwdbServer + "/file/" + hash.Hash + "/comment"
+	_, error := url.ParseQuery(getQuery)
+	if error != nil {
+		fmt.Println(error)
+		return error
+	}
+	getRequest, error := http.NewRequest("GET", getQuery, nil)
+	if error != nil {
+		fmt.Println(error)
+		return error
+	}
+	getRequest.Header.Set("Authorization", "Bearer "+auth)
+
+	getClient := &http.Client{}
+	getResponse, error := getClient.Do(getRequest)
+	if error != nil {
+		fmt.Println(error)
+		return error
+	}
+	defer getResponse.Body.Close()
+
+	var getData []CommentItemResponse
+	if getResponse.StatusCode == http.StatusOK {
+
+		byteValue, error := ioutil.ReadAll(getResponse.Body)
+		if error != nil {
+			fmt.Println(error)
+			return error
+		}
+
+		error = json.Unmarshal(byteValue, &getData)
+
+		if error != nil {
+			fmt.Println(error)
+			return error
+		}
+	}
+
+	for _, c := range hash.Comments {
+
+		// Check to make sure the comment does not already exists before added it, if it does exist continue on to the next comment
+		commentExists := false
+		if len(getData) > 0 {
+			for _, existingComment := range getData {
+				if c == existingComment.Comment {
+					commentExists = true
+					break
+				}
+			}
+		}
+		if commentExists {
+			fmt.Printf("    [!] %s comment already exists for %s\n", c, hash.Hash)
+			continue
+		}
+
+		// Add net comment to sample
+		query := mwdbServer + "/file/" + hash.Hash + "/comment"
+
+		_, error := url.ParseQuery(query)
+		if error != nil {
+			fmt.Println(error)
+			return error
+		}
+
+		value_json := "{\"comment\":\"" + c + "\"}"
+		request, error := http.NewRequest("POST", query, strings.NewReader(value_json))
+		if error != nil {
+			fmt.Println(error)
+			return error
+		}
+
+		request.Header.Set("Authorization", "Bearer "+auth)
+
+		client := &http.Client{}
+		respTag, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+
+		if respTag.StatusCode == http.StatusOK {
+			fmt.Printf("    [-] %s comment added for %s\n", c, hash.Hash)
+		} else {
+			fmt.Printf("    [!] Failed to comment %s for %s\n", c, hash.Hash)
+		}
+	}
+	return nil
+}
+
+func parseFileHashEntry(hash string, tags []string, comments []string) (Hash, error) {
+	ht, err := hashType(hash)
+	if err != nil {
+		fmt.Printf("\n Skipping %s because it's %s\n", hash, err)
+		return Hash{}, err
+	}
+	fmt.Printf("Hash found: %s\n", hash) // token in unicode-char
+	hashS := Hash{Hash: hash, HashType: ht}
+	if len(tags) > 0 {
+		hashS.Tags = tags
+	}
+	if len(comments) > 0 {
+		hashS.Comments = comments
+	}
+	return hashS, nil
+}
+
+func parseArgHashes(hashes []string, tags []string, comments []string) Hashes {
+	parsedHashes := Hashes{}
 	for _, h := range hashes {
 		ht, err := hashType(h)
 		if err != nil {
@@ -1396,11 +1603,14 @@ func parseHashes(hashes []string, tags []string) []Hash {
 			continue
 		}
 		fmt.Printf("Hash found: %s\n", h) // token in unicode-char
+		hash := Hash{Hash: h, HashType: ht}
 		if len(tags) > 0 {
-			parsedHashes = append(parsedHashes, Hash{Hash: h, HashType: ht, Tags: tags})
-		} else {
-			parsedHashes = append(parsedHashes, Hash{Hash: h, HashType: ht})
+			hash.Tags = tags
 		}
+		if len(comments) > 0 {
+			hash.Comments = comments
+		}
+		parsedHashes, _ = AddHash(parsedHashes, hash)
 	}
 	return parsedHashes
 }

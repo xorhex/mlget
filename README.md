@@ -69,37 +69,35 @@ Created /home/dir/.mlget.yml.  Make sure to fill out the API keys for the servic
 No hashes found
 mlget - A command line tool to download malware from a variety of sources
 
-Usage: ./mlget [OPTIONS] argument ...
-  -c    Parse and print the config file
-  -d string
-        The service to download the malware from.
-          Must be one of:
-          - tg (triage)
-          - mb (malwarebazaar)
-          - ms (malshare)
-          - ha (HybirdAnlysis)
-          - vt (VirusTotal)
-          - cp (Cape Sandbox)
-          - mw (Malware Database)
-          - ps (PolySwarm)
-          - iq (InquestLabs)
-        If omitted, all services will be tried.
-  -h    Print the help message
-  -ne
-        Do not extract malware from archive file.
-        Currently this only effects MalwareBazaar and HybridAnalysis
-  -o    Write to a file the hashes not found (for later use with the -r flag)
-  -r string
-        Read in a file of hashes (one per line)
-  -ru string
-        Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).
-  -u    Upload downloaded files to the MWDB instance specified in the mlget.yml file.
-  -ud
-        Upload downloaded files to the MWDB instance specified in the mlget.yml file.
-        Delete the files after successful upload
+Usage: ./mlget [OPTIONS] hash_arguments...
+      --comment strings     Add comment to the sample when uploading to your own instance of MWDB.
+      --config              Parse and print the config file
+      --from string         The service to download the malware from.
+                              Must be one of:
+                              - tg (Triage)
+                              - mb (Malware Bazaar)
+                              - ms (Malshare)
+                              - ha (HybirdAnlysis)
+                              - vt (VirusTotal)
+                              - cp (Cape Sandbox)
+                              - mw (Malware Database)
+                              - ps (PolySwarm)
+                              - iq (InquestLabs)
+                            If omitted, all services will be tried.
+      --help                Print the help message
+      --noextraction        Do not extract malware from archive file.
+                            Currently this only effects MalwareBazaar and HybridAnalysis
+      --output              Write to a file the hashes not found (for later use with the -r flag)
+      --read string         Read in a file of hashes (one per line)
+      --readupdate string   Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).
+      --tag strings         Tag the sample when uploading to your own instance of MWDB.
+      --upload              Upload downloaded files to the MWDB instance specified in the mlget.yml file.
+      --uploaddelete        Upload downloaded files to the MWDB instance specified in the mlget.yml file.
+                            Delete the files after successful upload
 
 Example Usage: mlget <sha256>
-Example Usage: mlget -d mb <sha256>
+Example Usage: mlget --from mb <sha256>
+Example Usage: mlget --tag tag_one --tag tag_two --uploaddelete <sha256> <sha1> <md5>
 ```
 
 Fill out the API keys where needed.  If the service does not have an API key then it will be skipped.
@@ -150,7 +148,7 @@ Multiple hash can be passed.
 #### Download from Specific Source
 
 ```
-mlget -d tg e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
+mlget --from tg e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
 ```
 
 #### Hashes from a file
@@ -158,55 +156,57 @@ mlget -d tg e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7
 Hashes can be read from both the command line and a file (one hash per line) at the same time
 
 ```
-mlget -r hashes.txt e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
+mlget --read hashes.txt e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
 ```
 
 #### Recording the hashes not found for next time
 
 This will output the unfound hashes to a new file:
 ```
-mlget -r hashes.txt -o e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
+mlget --read hashes.txt --output e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
 ```
 
 This will update current file so it only contains the hashes not found
 ```
-mlget -ru download.txt e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
+mlget --readupdate download.txt e6ba5de3a9b0287291def0317789b871fa1984a11021d55d3a0371c6d65a872b 1c7897a902b35570a9620c64a2926cd5d594d4ff5a033e28a400981d14516600
 ```
 
 #### Other Commands
 
 ```
-mlget -h
+mlget --help
 
 mlget - A command line tool to download malware from a variety of sources
 
-Usage: ./mlget [OPTIONS] argument ...
-      --c           Parse and print the config file
-      --d string    The service to download the malware from.
-                      Must be one of:
-                      - tg (Triage)
-                      - mb (Malware Bazaar)
-                      - ms (Malshare)
-                      - ha (HybirdAnlysis)
-                      - vt (VirusTotal)
-                      - cp (Cape Sandbox)
-                      - mw (Malware Database)
-                      - ps (PolySwarm)
-                      - iq (InquestLabs)
-                    If omitted, all services will be tried.
-      --h           Print the help message
-      --ne          Do not extract malware from archive file.
-                    Currently this only effects MalwareBazaar and HybridAnalysis
-      --o           Write to a file the hashes not found (for later use with the -r flag)
-      --r string    Read in a file of hashes (one per line)
-      --ru string   Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).
-      --t strings   Tag the sample when uploading to your own instance of MWDB.
-      --u           Upload downloaded files to the MWDB instance specified in the mlget.yml file.
-      --ud          Upload downloaded files to the MWDB instance specified in the mlget.yml file.
-                    Delete the files after successful upload
+Usage: ./mlget [OPTIONS] hash_arguments...
+      --comment strings     Add comment to the sample when uploading to your own instance of MWDB.
+      --config              Parse and print the config file
+      --from string         The service to download the malware from.
+                              Must be one of:
+                              - tg (Triage)
+                              - mb (Malware Bazaar)
+                              - ms (Malshare)
+                              - ha (HybirdAnlysis)
+                              - vt (VirusTotal)
+                              - cp (Cape Sandbox)
+                              - mw (Malware Database)
+                              - ps (PolySwarm)
+                              - iq (InquestLabs)
+                            If omitted, all services will be tried.
+      --help                Print the help message
+      --noextraction        Do not extract malware from archive file.
+                            Currently this only effects MalwareBazaar and HybridAnalysis
+      --output              Write to a file the hashes not found (for later use with the -r flag)
+      --read string         Read in a file of hashes (one per line)
+      --readupdate string   Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).
+      --tag strings         Tag the sample when uploading to your own instance of MWDB.
+      --upload              Upload downloaded files to the MWDB instance specified in the mlget.yml file.
+      --uploaddelete        Upload downloaded files to the MWDB instance specified in the mlget.yml file.
+                            Delete the files after successful upload
 
 Example Usage: mlget <sha256>
-Example Usage: mlget -d mb <sha256>
+Example Usage: mlget --from mb <sha256>
+Example Usage: mlget --tag tag_one --tag tag_two --uploaddelete <sha256> <sha1> <md5>
 ```
 
 
