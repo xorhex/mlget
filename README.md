@@ -134,7 +134,17 @@ uploadtomwdb:
   host: ""
 ```
 
-Fill out the last last one `uploadtomwdb` if you want to take advantage of your private [MWDB](https://github.com/CERT-Polska/mwdb-core) instance to upload the files to.  All of the others are for download only.
+Fill out the last last one `uploadtomwdb` if you want to take advantage of a private [MWDB](https://github.com/CERT-Polska/mwdb-core) instance to upload the files to.  All of the others are for download only.
+
+### Suggested Setup
+
+#### When uploadtomwdb is Configured
+
+Add an alias that maps `mlget` to `mlget --uploaddelete --readupdate /path/to/malware_download_tracker.txt`
+
+#### When uploadtomwdb is Not Configured
+
+Add an alias that maps `mlget` to `mlget --readupdate /path/to/malware_download_tracker.txt`
 
 ### Example Usage
 
