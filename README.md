@@ -87,7 +87,7 @@ Usage: ./mlget [OPTIONS] hash_arguments...
       --help                Print the help message
       --noextraction        Do not extract malware from archive file.
                             Currently this only effects MalwareBazaar and HybridAnalysis
-      --output              Write to a file the hashes not found (for later use with the -r flag)
+      --output              Write to a file the hashes not found (for later use with the --read flag)
       --read string         Read in a file of hashes (one per line)
       --readupdate string   Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).
       --tag strings         Tag the sample when uploading to your own instance of MWDB.
@@ -196,7 +196,7 @@ Usage: ./mlget [OPTIONS] hash_arguments...
       --help                Print the help message
       --noextraction        Do not extract malware from archive file.
                             Currently this only effects MalwareBazaar and HybridAnalysis
-      --output              Write to a file the hashes not found (for later use with the -r flag)
+      --output              Write to a file the hashes not found (for later use with the --read flag)
       --read string         Read in a file of hashes (one per line)
       --readupdate string   Read hashes from file to download.  Replace entries in the file with just the hashes that were not found (for next time).
       --tag strings         Tag the sample when uploading to your own instance of MWDB.

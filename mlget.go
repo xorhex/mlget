@@ -197,7 +197,7 @@ func usage() {
 func init() {
 	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - tg (Triage)\n  - mb (Malware Bazaar)\n  - ms (Malshare)\n  - ha (HybirdAnlysis)\n  - vt (VirusTotal)\n  - cp (Cape Sandbox)\n  - mw (Malware Database)\n  - ps (PolySwarm)\n  - iq (InquestLabs)\nIf omitted, all services will be tried.")
 	flag.StringVar(&inputFileFlag, "read", "", "Read in a file of hashes (one per line)")
-	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the -r flag)")
+	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the --read flag)")
 	flag.BoolVar(&helpFlag, "help", false, "Print the help message")
 	flag.BoolVar(&checkConfFlag, "config", false, "Parse and print the config file")
 	flag.BoolVar(&doNotExtractFlag, "noextraction", false, "Do not extract malware from archive file.\nCurrently this only effects MalwareBazaar and HybridAnalysis")
