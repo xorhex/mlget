@@ -525,11 +525,11 @@ func capesandboxDownload(uri string, api string, hash string, ht string) (bool, 
 	}
 	defer response.Body.Close()
 
-	if response.Header["Content-Type"][0] == "application/json" {
-		return false, ""
-	}
-
 	if response.StatusCode == http.StatusOK {
+
+		if response.Header["Content-Type"][0] == "application/json" {
+			return false, ""
+		}
 
 		error = writeToFile(response.Body, hash)
 		if error != nil {
