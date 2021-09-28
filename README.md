@@ -24,6 +24,8 @@
          \/____/                  \/____/                                   \/____/                              
 ```                                                                                                              
 
+![Build](https://github.com/xorhex/mlget/actions/workflows/go.yml/badge.svg)
+
 ### What is it
 
 Use mlget to query multiple sources for a given malware hash and download it.  The thought is to save time querying each source individually.
