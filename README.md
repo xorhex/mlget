@@ -41,6 +41,7 @@ Currently queries:
 - mw (Malware Database)
 - ps (PolySwarm)
 - iq (InquestLabs)
+- js (JoeSandbox)
 
 Only Malware Bazaar does not require a key, the rest require a key.  The config file needs to be placed in the user's home directory (essentially where `os.UserHomeDir()` resolves to).
 
