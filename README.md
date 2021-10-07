@@ -88,6 +88,7 @@ Usage: ./mlget [OPTIONS] hash_arguments...
                               - mw (Malware Database)
                               - ps (PolySwarm)
                               - iq (InquestLabs)
+                              - js (JoeSandbox)
                             If omitted, all services will be tried.
       --help                Print the help message
       --noextraction        Do not extract malware from archive file.
@@ -209,6 +210,7 @@ Usage of mlget:
                               - mw (Malware Database)
                               - ps (PolySwarm)
                               - iq (InquestLabs)
+                              - js (JoeSandbox)
                             If omitted, all services will be tried.
       --help                Print the help message
       --noextraction        Do not extract malware from archive file.
