@@ -135,6 +135,9 @@ capesandbox:
 inquestlabs:
   api: ""
   host: https://labs.inquest.net/api
+joesandbox:
+  api: ""
+  host: https://jbxcloud.joesecurity.org/api
 uploadtomwdb:
   api: ""
   host: ""
