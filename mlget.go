@@ -550,7 +550,7 @@ func joesandbox(uri string, api string, hash Hash) (bool, string) {
 		return false, ""
 	}
 
-	fmt.Printf("    [-] Looking up sandbox ID for: %s\n", hash)
+	fmt.Printf("    [-] Looking up sandbox ID for: %s\n", hash.Hash)
 
 	query := uri + "/v2/analysis/search"
 
