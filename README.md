@@ -74,6 +74,8 @@ mlget - A command line tool to download malware from a variety of sources
 Usage: ./mlget [OPTIONS] hash_arguments...
       --comment strings     Add comment to the sample when uploading to your own instance of MWDB.
       --config              Parse and print the config file
+      --downloadonly        Download from any source, including your personal instance of MWDB.
+                            When this flag is set; it will NOT update any output file with the hashes not found.
       --from string         The service to download the malware from.
                               Must be one of:
                               - tg (Triage)
@@ -190,9 +192,11 @@ mlget --help
 
 mlget - A command line tool to download malware from a variety of sources
 
-Usage: ./mlget [OPTIONS] hash_arguments...
+Usage of mlget:
       --comment strings     Add comment to the sample when uploading to your own instance of MWDB.
       --config              Parse and print the config file
+      --downloadonly        Download from any source, including your personal instance of MWDB.
+                            When this flag is set; it will NOT update any output file with the hashes not found.
       --from string         The service to download the malware from.
                               Must be one of:
                               - tg (Triage)
