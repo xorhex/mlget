@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"path"
 	"testing"
@@ -8,12 +9,15 @@ import (
 
 func TestJoeSandbox(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "md5", Hash: "28eefc36104bebb595fb38cae21a7d0a"}
+	hash := Hash{HashType: md5, Hash: "28eefc36104bebb595fb38cae21a7d0a"}
 
-	result, _ := joesandbox(cfg.JoeSandbox.Host, cfg.JoeSandbox.ApiKey, hash)
+	result, _ := JoeSandbox.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("JoeSandbox failed")
@@ -24,12 +28,15 @@ func TestJoeSandbox(t *testing.T) {
 
 func TestCapeSandbox(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "md5", Hash: "28eefc36104bebb595fb38cae21a7d0a"}
+	hash := Hash{HashType: md5, Hash: "28eefc36104bebb595fb38cae21a7d0a"}
 
-	result, _ := capesandbox(cfg.CapeSandbox.Host, cfg.CapeSandbox.ApiKey, hash)
+	result, _ := CapeSandbox.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("CapeSandbox failed")
@@ -40,12 +47,15 @@ func TestCapeSandbox(t *testing.T) {
 
 func TestInquestLabs(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "sha256", Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
 
-	result, _ := inquestlabs(cfg.InquestLabs.Host, cfg.InquestLabs.ApiKey, hash)
+	result, _ := InQuest.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("InquestLabs failed")
@@ -56,12 +66,15 @@ func TestInquestLabs(t *testing.T) {
 
 func TestVirusTotal(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "sha256", Hash: "21cc9c0ae5f97b66d69f1ff99a4fed264551edfe0a5ce8d5449942bf8f0aefb2"}
+	hash := Hash{HashType: sha256, Hash: "21cc9c0ae5f97b66d69f1ff99a4fed264551edfe0a5ce8d5449942bf8f0aefb2"}
 
-	result, _ := virustotal(cfg.VT.Host, cfg.VT.ApiKey, hash)
+	result, _ := VirusTotal.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("VirusTotal failed")
@@ -72,12 +85,15 @@ func TestVirusTotal(t *testing.T) {
 
 func TestMWDB(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "sha256", Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
 
-	result, _ := mwdb(cfg.MWDB.Host, cfg.MWDB.ApiKey, hash)
+	result, _ := MWDB.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("MWDB failed")
@@ -88,12 +104,15 @@ func TestMWDB(t *testing.T) {
 
 func TestPolyswarm(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "sha256", Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
 
-	result, _ := polyswarm(cfg.PolySwarm.Host, cfg.PolySwarm.ApiKey, hash)
+	result, _ := Polyswarm.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("PolySwarm failed")
@@ -104,12 +123,15 @@ func TestPolyswarm(t *testing.T) {
 
 func TestHybridAnalysis(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "sha256", Hash: "ed2f501408a7a6e1a854c29c4b0bc5648a6aa8612432df829008931b3e34bf56"}
+	hash := Hash{HashType: sha256, Hash: "ed2f501408a7a6e1a854c29c4b0bc5648a6aa8612432df829008931b3e34bf56"}
 
-	result, _ := hybridAnlysis(cfg.HybridAnalysis.Host, cfg.HybridAnalysis.ApiKey, hash, false)
+	result, _ := HybridAnalysis.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("HybridAnalysis failed")
@@ -120,12 +142,15 @@ func TestHybridAnalysis(t *testing.T) {
 
 func TestTriage(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "sha256", Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
 
-	result, _ := traige(cfg.Triage.Host, cfg.Triage.ApiKey, hash)
+	result, _ := Triage.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("Triage failed")
@@ -136,12 +161,15 @@ func TestTriage(t *testing.T) {
 
 func TestMalShare(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "sha256", Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
 
-	result, _ := traige(cfg.Triage.Host, cfg.Triage.ApiKey, hash)
+	result, _ := Malshare.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("Malshare failed")
@@ -152,12 +180,15 @@ func TestMalShare(t *testing.T) {
 
 func TestMalwareBazaar(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	var cfg Config
-	parseFile(path.Join(home, ".mlget.yml"), &cfg)
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
 
-	hash := Hash{HashType: "sha256", Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
 
-	result, _ := malwareBazaar(cfg.MalwareBazar.Host, hash, false)
+	result, _ := MalwareBazaar.QueryAndDownload(cfg, hash, false)
 
 	if !result {
 		t.Errorf("Malshare failed")

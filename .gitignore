@@ -1,3 +1,6 @@
 mlget
 mlget.yml
 go.sum
+.mlget.yml
+mlget.bak.yml
+mlget-bak.yml
