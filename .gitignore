@@ -4,3 +4,4 @@ go.sum
 .mlget.yml
 mlget.bak.yml
 mlget-bak.yml
+.vscode/*

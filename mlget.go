@@ -126,7 +126,9 @@ func main() {
 		fmt.Printf("\nLook up %s (%s)\n", h.Hash, h.HashType)
 
 		if (uploadToMWDBFlag || uploadToMWDBAndDeleteFlag) && !downloadOnlyFlag {
-			SyncSampleAcrossUploadMWDBsIfExists(cfg, h)
+			if SyncSampleAcrossUploadMWDBsIfExists(cfg, h) {
+				continue
+			}
 		}
 
 		if apiFlag != "" {

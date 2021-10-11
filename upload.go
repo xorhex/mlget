@@ -20,8 +20,9 @@ type CommentItemResponse struct {
 	Timestamp string `json:"timestamp"`
 }
 
-func SyncSampleAcrossUploadMWDBsIfExists(repos []RepositoryConfigEntry, hash Hash) {
+func SyncSampleAcrossUploadMWDBsIfExists(repos []RepositoryConfigEntry, hash Hash) bool {
 	matchingConfigRepos := getConfigsByType(UploadMWDB, repos)
+	synced := false
 	for _, mcr := range matchingConfigRepos {
 		if !doesSampleExistInMWDB(mcr.Host, mcr.Api, hash.Hash) {
 			// If sample not found then skip the rest of this loop and check to see if the next UploadMWDB instance has the sample
@@ -47,8 +48,9 @@ func SyncSampleAcrossUploadMWDBsIfExists(repos []RepositoryConfigEntry, hash Has
 				AddCommentsToSamplesAcrossMWDBs(matchingConfigRepos, hash)
 			}
 		}
+		synced = true
 	}
-
+	return synced
 }
 
 func doesSampleExistInMWDB(uri string, api string, hash string) bool {
