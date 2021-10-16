@@ -2,7 +2,7 @@
 
 on: 
   release:
-    types: [created]
+    types: [created, draft]
 
 jobs:
   releases-matrix:
@@ -21,3 +21,5 @@ jobs:
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
         sha256sum: true
+        build_command: go build
+        build_flags: -v
