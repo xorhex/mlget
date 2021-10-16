@@ -691,7 +691,7 @@ func malshareDownload(uri string, api string, hash Hash) (bool, string) {
 			fmt.Println(error)
 			return false, ""
 		}
-		fmt.Printf("    [+] Downloaded %s\n", hash)
+		fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
 		return true, hash.Hash
 	} else if response.StatusCode == http.StatusForbidden {
 		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
