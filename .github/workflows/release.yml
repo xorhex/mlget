@@ -23,3 +23,4 @@ jobs:
         sha256sum: true
         build_command: go build
         build_flags: -v
+        pre_command: go get -u
