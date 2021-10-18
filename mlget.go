@@ -37,7 +37,7 @@ func usage() {
 }
 
 func init() {
-	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - tg (Triage)\n  - mb (Malware Bazaar)\n  - ms (Malshare)\n  - ha (Hybird Anlysis)\n  - vt (VirusTotal)\n  - cp (Cape Sandbox)\n  - mw (Malware Database)\n  - ps (PolySwarm)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\nIf omitted, all services will be tried.")
+	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - tg (Triage)\n  - mb (Malware Bazaar)\n  - ms (Malshare)\n  - ha (Hybird Anlysis)\n  - vt (VirusTotal)\n  - cp (Cape Sandbox)\n  - mw (Malware Database)\n  - ps (PolySwarm)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - os (Objective-See)\nIf omitted, all services will be tried.")
 	flag.StringVar(&inputFileFlag, "read", "", "Read in a file of hashes (one per line)")
 	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the --read flag)")
 	flag.BoolVar(&helpFlag, "help", false, "Print the help message")
@@ -90,6 +90,19 @@ func main() {
 		return
 	}
 
+	var osq ObjectiveSeeQuery
+	osConfigs := getConfigsByType(ObjectiveSee, cfg)
+	// Can have multiple Objective-See configs but only the first one to load will be used
+	for _, osc := range osConfigs {
+		osq, err = loadObjectiveSeeJson(osc.Host)
+		if err != nil {
+			fmt.Println("Unable to load Objective-See json data.  Skipping...")
+			continue
+		}
+		fmt.Println("")
+		break
+	}
+
 	hashes := parseArgHashes(args, tagsFlag, commentsFlag)
 
 	if inputFileFlag != "" {
@@ -138,9 +151,9 @@ func main() {
 				continue
 			}
 
-			fmt.Printf("Looking on %s\n", apiFlag)
+			fmt.Printf("Looking on %s\n", getMalwareRepoByFlagName(apiFlag))
 
-			found, filename := flaggedRepo.QueryAndDownload(cfg, h, doNotExtractFlag)
+			found, filename := flaggedRepo.QueryAndDownload(cfg, h, doNotExtractFlag, osq)
 			if !found {
 				fmt.Println("    [!] Not Found")
 				notFoundHashes, _ = addHash(notFoundHashes, h)
@@ -156,7 +169,7 @@ func main() {
 		} else {
 			fmt.Println("Querying all services")
 
-			found, filename := queryAndDownloadAll(cfg, h, doNotExtractFlag, !downloadOnlyFlag)
+			found, filename := queryAndDownloadAll(cfg, h, doNotExtractFlag, !downloadOnlyFlag, osq)
 			if found {
 				if (uploadToMWDBFlag || uploadToMWDBAndDeleteFlag) && !downloadOnlyFlag {
 					err := UploadSampleToMWDBs(cfg, filename, h, uploadToMWDBAndDeleteFlag)

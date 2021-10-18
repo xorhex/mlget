@@ -30,7 +30,8 @@ func SyncSampleAcrossUploadMWDBsIfExists(repos []RepositoryConfigEntry, hash Has
 		}
 		// A sample was found, now download and upload to the remaining instances
 		if len(matchingConfigRepos) > 1 {
-			downloaded, filename := UploadMWDB.QueryAndDownload(matchingConfigRepos, hash, false)
+			var osq ObjectiveSeeQuery
+			downloaded, filename := UploadMWDB.QueryAndDownload(matchingConfigRepos, hash, false, osq)
 			if downloaded {
 				UploadSampleToMWDBs(matchingConfigRepos, filename, hash, true)
 			}

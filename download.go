@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 
 	"github.com/yeka/zip"
 )
@@ -61,6 +62,111 @@ type TriageQueryData struct {
 	Id       string `json:"id"`
 	Kind     string `json:"kind"`
 	Filename string `json:"filename"`
+}
+
+type ObjectiveSeeQuery struct {
+	Malware []ObjectiveSeeData `json:"malware"`
+}
+
+type ObjectiveSeeData struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	VirusTotal string `json:"virusTotal"`
+	MoreInfo   string `json:"moreInfo"`
+	Download   string `json:"download"`
+	Sha256     string
+}
+
+func loadObjectiveSeeJson(uri string) (ObjectiveSeeQuery, error) {
+
+	fmt.Printf("Downloading Objective-See Malware json from: %s\n\n", uri)
+
+	client := &http.Client{}
+	response, error := client.Get(uri)
+	if error != nil {
+		fmt.Println(error)
+		return ObjectiveSeeQuery{}, error
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+		byteValue, _ := ioutil.ReadAll(response.Body)
+
+		var data = ObjectiveSeeQuery{}
+		error = json.Unmarshal(byteValue, &data)
+
+		var unmarshalTypeError *json.UnmarshalTypeError
+		if errors.As(error, &unmarshalTypeError) {
+			fmt.Printf("    [!] Failed unmarshaling json.  Likely due to the format of the Objective-See json file changing\n")
+			fmt.Printf("        %s\n", byteValue)
+
+		} else if error != nil {
+			fmt.Println(error)
+			return ObjectiveSeeQuery{}, error
+		}
+
+		fmt.Printf("  Parsing VirusTotal Links for sha256 hashes\n")
+		re := regexp.MustCompile("[A-Fa-f0-9]{64}")
+		for k, item := range data.Malware {
+			if len(item.VirusTotal) > 0 {
+				matches := re.FindStringSubmatch(item.VirusTotal)
+				if len(matches) == 1 {
+					data.Malware[k].Sha256 = matches[0]
+				}
+			}
+			if len(data.Malware[k].Sha256) == 0 {
+				fmt.Printf("    [!] SHA256 not found for %s : %s\n        VirusTotal Link: %s\n", item.Name, item.Type, item.VirusTotal)
+			}
+		}
+
+		return data, nil
+	} else {
+		return ObjectiveSeeQuery{}, fmt.Errorf("unable to download objective-see json file")
+	}
+}
+
+func objectivesee(data ObjectiveSeeQuery, hash Hash, doNotExtract bool, password string) (bool, string) {
+	if hash.HashType != sha256 {
+		fmt.Printf("    [!] Objective-See only supports SHA256\n        Skipping\n")
+	}
+
+	item, found := findHashInObjectiveSeeList(data.Malware, hash)
+
+	if !found {
+		return false, ""
+	}
+
+	if !doNotExtract {
+		fmt.Printf("    [!] Extraction is not supported for Objective-See\n         Try again but with the --noextraction flag\n")
+		return false, ""
+	}
+
+	client := &http.Client{}
+	response, error := client.Get(item.Download)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return false, ""
+	}
+
+	error = writeToFile(response.Body, hash.Hash+".zip")
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	fmt.Printf("    [+] Downloaded %s\n", hash.Hash+".zip")
+	if doNotExtract {
+		return true, hash.Hash + ".zip"
+	} else {
+		return false, ""
+	}
 }
 
 func joesandbox(uri string, api string, hash Hash) (bool, string) {
@@ -701,7 +807,7 @@ func malshareDownload(uri string, api string, hash Hash) (bool, string) {
 	}
 }
 
-func malwareBazaar(url string, hash Hash, doNotExtract bool) (bool, string) {
+func malwareBazaar(url string, hash Hash, doNotExtract bool, password string) (bool, string) {
 	if hash.HashType != sha256 {
 		fmt.Printf("    [-] Looking up sha256 hash for %s\n", hash.Hash)
 
@@ -747,12 +853,12 @@ func malwareBazaar(url string, hash Hash, doNotExtract bool) (bool, string) {
 	}
 
 	if hash.HashType == sha256 {
-		return malwareBazaarDownload(url, hash, doNotExtract)
+		return malwareBazaarDownload(url, hash, doNotExtract, password)
 	}
 	return false, ""
 }
 
-func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool) (bool, string) {
+func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool, password string) (bool, string) {
 	query := "query=get_file&sha256_hash=" + hash.Hash
 	values, error := url.ParseQuery(query)
 	if error != nil {
@@ -784,7 +890,7 @@ func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool) (bool, stri
 		return true, hash.Hash + ".zip"
 	} else {
 		fmt.Println("    [-] Extracting...")
-		files, err := extractPwdZip(hash.Hash)
+		files, err := extractPwdZip(hash.Hash, password)
 		if err != nil {
 			fmt.Println(err)
 			return false, ""
@@ -813,7 +919,7 @@ func extractGzip(hash string) error {
 	return err
 }
 
-func extractPwdZip(hash string) ([]*zip.File, error) {
+func extractPwdZip(hash string, password string) ([]*zip.File, error) {
 
 	r, err := zip.OpenReader(hash + ".zip")
 	if err != nil {
@@ -845,4 +951,13 @@ func extractPwdZip(hash string) ([]*zip.File, error) {
 		}
 	}
 	return files, nil
+}
+
+func findHashInObjectiveSeeList(list []ObjectiveSeeData, hash Hash) (ObjectiveSeeData, bool) {
+	for _, item := range list {
+		if item.Sha256 == hash.Hash {
+			return item, true
+		}
+	}
+	return ObjectiveSeeData{}, false
 }

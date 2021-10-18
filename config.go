@@ -75,14 +75,15 @@ const (
 	Malshare
 	VirusTotal
 	Polyswarm
+	ObjectiveSee
 
 	//UploadMWDB must always be last, or other things won't work as expected
 	UploadMWDB
 )
 
-var MalwareRepoList = []MalwareRepoType{JoeSandbox, MWDB, HybridAnalysis, CapeSandbox, InQuest, MalwareBazaar, Triage, Malshare, VirusTotal, Polyswarm, UploadMWDB}
+var MalwareRepoList = []MalwareRepoType{JoeSandbox, MWDB, HybridAnalysis, CapeSandbox, InQuest, MalwareBazaar, Triage, Malshare, VirusTotal, Polyswarm, ObjectiveSee, UploadMWDB}
 
-func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool) (bool, string) {
+func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, osq ObjectiveSeeQuery) (bool, string) {
 	matchingConfigRepos := getConfigsByType(malrepo, repos)
 	if len(matchingConfigRepos) == 0 {
 		fmt.Printf("    [!] %s is not found in the yml config file\n", malrepo)
@@ -93,7 +94,7 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 		fmt.Printf("  [*] %s: %s\n", mcr.Type, mcr.Host)
 		switch malrepo {
 		case MalwareBazaar:
-			found, filename = malwareBazaar(mcr.Host, hash, doNotExtract)
+			found, filename = malwareBazaar(mcr.Host, hash, doNotExtract, "infected")
 		case MWDB:
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
 		case Malshare:
@@ -112,6 +113,10 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 			found, filename = joesandbox(mcr.Host, mcr.Api, hash)
 		case CapeSandbox:
 			found, filename = capesandbox(mcr.Host, mcr.Api, hash)
+		case ObjectiveSee:
+			if len(osq.Malware) > 0 {
+				found, filename = objectivesee(osq, hash, doNotExtract, "infect3d")
+			}
 		case UploadMWDB:
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
 		}
@@ -127,6 +132,10 @@ func (malrepo MalwareRepoType) VerifyRepoParams(repo RepositoryConfigEntry) bool
 	case NotSupported:
 		return false
 	case MalwareBazaar:
+		if repo.Host != "" {
+			return true
+		}
+	case ObjectiveSee:
 		if repo.Host != "" {
 			return true
 		}
@@ -167,6 +176,8 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		default_url = "https://www.virustotal.com/api/v3"
 	case Polyswarm:
 		default_url = "https://api.polyswarm.network/v2"
+	case ObjectiveSee:
+		default_url = "https://objective-see.com/malware.json"
 	}
 	if default_url != "" {
 		fmt.Printf("Enter Host [ Press enter for default - %s ]:\n", default_url)
@@ -209,6 +220,8 @@ func (malrepo MalwareRepoType) String() string {
 		return "VirusTotal"
 	case Polyswarm:
 		return "Polyswarm"
+	case ObjectiveSee:
+		return "ObjectiveSee"
 	case UploadMWDB:
 		return "UploadMWDB"
 
@@ -229,24 +242,26 @@ func printAllowedMalwareRepoTypeOptions() {
 	}
 }
 
-func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, skipUploadMWDBEntries bool) (bool, string) {
+func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, skipUploadMWDBEntries bool, osq ObjectiveSeeQuery) (bool, string) {
 	found := false
 	filename := ""
 	sort.Slice(repos[:], func(i, j int) bool {
 		return repos[i].QueryOrder < repos[j].QueryOrder
 	})
+
 	// Hack for now
-	// Due to Multiple entries of the same type, for each type instance in the config  it will
-	// try to download for type (number of entries for type in config squared)
+	// Due to Multiple entries of the same type, for each type instance in the config it will
+	// try to download for type the number of entries for type in config squared
 	// This array is meant to ensure that for each type it will only try it once
 	var completedTypes []MalwareRepoType
+
 	for _, repo := range repos {
 		if repo.Type == UploadMWDB.String() && skipUploadMWDBEntries {
 			continue
 		}
 		mr := getMalwareRepoByName(repo.Type)
 		if !contains(completedTypes, mr) {
-			found, filename = mr.QueryAndDownload(repos, hash, doNotExtract)
+			found, filename = mr.QueryAndDownload(repos, hash, doNotExtract, osq)
 			if found {
 				break
 			}
@@ -278,6 +293,8 @@ func getMalwareRepoByFlagName(name string) MalwareRepoType {
 		return VirusTotal
 	case strings.ToLower("ps"):
 		return Polyswarm
+	case strings.ToLower("os"):
+		return ObjectiveSee
 	}
 	return NotSupported
 }
@@ -304,6 +321,8 @@ func getMalwareRepoByName(name string) MalwareRepoType {
 		return VirusTotal
 	case strings.ToLower("Polyswarm"):
 		return Polyswarm
+	case strings.ToLower("ObjectiveSee"):
+		return ObjectiveSee
 	case strings.ToLower("UploadMWDB"):
 		return UploadMWDB
 	}
@@ -325,6 +344,7 @@ type RepositoryConfigEntry struct {
 	Host       string `yaml:"url"`
 	Api        string `yaml:"api"`
 	QueryOrder int    `yaml:"queryorder"`
+	Password   string `yaml:"pwd"`
 }
 
 func LoadConfig(filename string) ([]RepositoryConfigEntry, error) {
