@@ -807,21 +807,19 @@ func malshareDownload(uri string, api string, hash Hash) (bool, string) {
 	}
 }
 
-func malwareBazaar(url string, hash Hash, doNotExtract bool, password string) (bool, string) {
+func malwareBazaar(uri string, hash Hash, doNotExtract bool, password string) (bool, string) {
 	if hash.HashType != sha256 {
 		fmt.Printf("    [-] Looking up sha256 hash for %s\n", hash.Hash)
 
-		pData := []byte("query=get_info&hash=" + hash.Hash)
-		request, error := http.NewRequest("POST", url, bytes.NewBuffer(pData))
-
+		query := "query=get_file&hash=" + hash.Hash
+		values, error := url.ParseQuery(query)
 		if error != nil {
 			fmt.Println(error)
 			return false, ""
 		}
 
-		request.Header.Set("Content-Type", "application/json; charset=UTF-8")
 		client := &http.Client{}
-		response, error := client.Do(request)
+		response, error := client.PostForm(uri, values)
 		if error != nil {
 			fmt.Println(error)
 			return false, ""
@@ -853,7 +851,7 @@ func malwareBazaar(url string, hash Hash, doNotExtract bool, password string) (b
 	}
 
 	if hash.HashType == sha256 {
-		return malwareBazaarDownload(url, hash, doNotExtract, password)
+		return malwareBazaarDownload(uri, hash, doNotExtract, password)
 	}
 	return false, ""
 }

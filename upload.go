@@ -206,7 +206,7 @@ func addTagsToSampleInMWDB(hash Hash, mwdbServer string, auth string) error {
 func AddCommentsToSamplesAcrossMWDBs(repos []RepositoryConfigEntry, hash Hash) {
 	matchingConfigRepos := getConfigsByType(UploadMWDB, repos)
 	for _, mcr := range matchingConfigRepos {
-		if doesSampleExistInMWDB(mcr.Host, mcr.Api, hash.Hash) {
+		if !doesSampleExistInMWDB(mcr.Host, mcr.Api, hash.Hash) {
 			continue
 		}
 		err := addCommentsToSampleInMWDB(hash, mcr.Host, mcr.Api)
