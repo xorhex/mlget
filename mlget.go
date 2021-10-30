@@ -122,7 +122,10 @@ func main() {
 			fmt.Printf("Error reading from %s\n", inputFileFlag)
 			fmt.Println(err)
 		} else {
-			for _, hsh := range hshs {
+			for idx, hsh := range hshs {
+				if len(hshs) > 100 {
+					fmt.Printf("Adding Hash %d of %d\n", idx, len(hshs))
+				}
 				hashes, _ = addHash(hashes, hsh)
 			}
 		}
@@ -132,7 +135,10 @@ func main() {
 			fmt.Printf("Error reading from %s\n", readFromFileAndUpdateWithNotFoundHashesFlag)
 			fmt.Println(err)
 		} else {
-			for _, hsh := range hshs {
+			for idx, hsh := range hshs {
+				if len(hshs) > 100 {
+					fmt.Printf("Adding Hash %d of %d\n", idx, len(hshs))
+				}
 				hashes, _ = addHash(hashes, hsh)
 			}
 		}
