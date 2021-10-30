@@ -210,7 +210,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		fmt.Println("Using the default url")
 		host = default_url
 	}
-	if malrepo != MalwareBazaar {
+	if malrepo != MalwareBazaar && malrepo != ObjectiveSee {
 		fmt.Println("Enter API Key:")
 		fmt.Print(">> ")
 		fmt.Scanln(&api)
