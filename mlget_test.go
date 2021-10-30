@@ -226,3 +226,43 @@ func TestMalwareBazaar(t *testing.T) {
 		os.Remove(hash.Hash)
 	}
 }
+
+func TestMalpedia(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	hash := Hash{HashType: sha256, Hash: "78668c237097651d64c97b25fc86c74096bfe1ed53e1004445f118ea5feaa3ad"}
+
+	var osq ObjectiveSeeQuery
+	result, _ := Malpedia.QueryAndDownload(cfg, hash, false, osq)
+
+	if !result {
+		t.Errorf("Malpedia failed")
+	} else {
+		os.Remove(hash.Hash)
+	}
+}
+
+func TestUnpacme(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	hash := Hash{HashType: sha256, Hash: "c8c69f36f89061f4ce86b108c0ff12ade49d665eace2d60ba179a2341bd54c40"}
+
+	var osq ObjectiveSeeQuery
+	result, _ := UnpacMe.QueryAndDownload(cfg, hash, false, osq)
+
+	if !result {
+		t.Errorf("Unpacme failed")
+	} else {
+		os.Remove(hash.Hash)
+	}
+}

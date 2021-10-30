@@ -22,6 +22,9 @@ var uploadToMWDBFlag bool
 var readFromFileAndUpdateWithNotFoundHashesFlag string
 var tagsFlag []string
 var commentsFlag []string
+var versionFlag bool
+
+var version string = "2.4"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
@@ -31,13 +34,13 @@ func usage() {
 	flag.PrintDefaults()
 
 	fmt.Println("")
-	fmt.Println("Example Usage: mlget <sha256>")
+	fmt.Println("Example Usage: mlget <sha256> <md5> <sha1> <sha256>")
 	fmt.Println("Example Usage: mlget --from mb <sha256>")
 	fmt.Println("Example Usage: mlget --tag tag_one --tag tag_two --uploaddelete <sha256> <sha1> <md5>")
 }
 
 func init() {
-	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - tg (Triage)\n  - mb (Malware Bazaar)\n  - ms (Malshare)\n  - ha (Hybird Anlysis)\n  - vt (VirusTotal)\n  - cp (Cape Sandbox)\n  - mw (Malware Database)\n  - ps (PolySwarm)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - os (Objective-See)\nIf omitted, all services will be tried.")
+	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - cp (Cape Sandbox)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tg (Triage)\n  - um (UnpacMe)\n  - vt (VirusTotal)\nIf omitted, all services will be tried.")
 	flag.StringVar(&inputFileFlag, "read", "", "Read in a file of hashes (one per line)")
 	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the --read flag)")
 	flag.BoolVar(&helpFlag, "help", false, "Print the help message")
@@ -50,9 +53,16 @@ func init() {
 	flag.StringSliceVar(&tagsFlag, "tag", []string{}, "Tag the sample when uploading to your own instance of MWDB.")
 	flag.StringSliceVar(&commentsFlag, "comment", []string{}, "Add comment to the sample when uploading to your own instance of MWDB.")
 	flag.BoolVar(&downloadOnlyFlag, "downloadonly", false, "Download from any source, including your personal instance of MWDB.\nWhen this flag is set; it will NOT update any output file with the hashes not found.\nAnd it will not upload to any of the UploadMWDB instances.")
+	flag.BoolVar(&versionFlag, "version", false, "Print the version number")
 }
 
 func main() {
+
+	if versionFlag {
+		fmt.Printf("Mlget version: %s\n", version)
+		return
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Println(err)
@@ -76,6 +86,7 @@ func main() {
 
 	if AddConfigEntryFlag {
 		AddToConfig(configFileName)
+		return
 	}
 
 	if checkConfFlag {

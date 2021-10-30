@@ -64,24 +64,36 @@ type OldConfig struct {
 type MalwareRepoType int64
 
 const (
-	NotSupported MalwareRepoType = iota
-	JoeSandbox
-	MWDB
-	HybridAnalysis
+	NotSupported MalwareRepoType = iota //NotSupported must always be first, or other things won't work as expected
+
 	CapeSandbox
+	HybridAnalysis
 	InQuest
-	MalwareBazaar
-	Triage
+	JoeSandbox
+	Malpedia
 	Malshare
-	VirusTotal
-	Polyswarm
+	MalwareBazaar
+	MWDB
 	ObjectiveSee
+	Polyswarm
+	Triage
+	UnpacMe
+	VirusTotal
 
 	//UploadMWDB must always be last, or other things won't work as expected
 	UploadMWDB
 )
 
-var MalwareRepoList = []MalwareRepoType{JoeSandbox, MWDB, HybridAnalysis, CapeSandbox, InQuest, MalwareBazaar, Triage, Malshare, VirusTotal, Polyswarm, ObjectiveSee, UploadMWDB}
+//var MalwareRepoList = []MalwareRepoType{CapeSandbox, HybridAnalysis, InQuest, JoeSandbox, Malpedia, Malshare, MalwareBazaar, MWDB, ObjectiveSee, Polyswarm, Triage, UnpacMe, VirusTotal, UploadMWDB}
+func getMalwareRepoList() []MalwareRepoType {
+	var malwareRepoList []MalwareRepoType
+	for repo := range [UploadMWDB + 1]int64{} {
+		if int64(repo) > int64(NotSupported) && int64(repo) <= int64(UploadMWDB) {
+			malwareRepoList = append(malwareRepoList, MalwareRepoType(repo))
+		}
+	}
+	return malwareRepoList
+}
 
 func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, osq ObjectiveSeeQuery) (bool, string) {
 	matchingConfigRepos := getConfigsByType(malrepo, repos)
@@ -117,6 +129,10 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 			if len(osq.Malware) > 0 {
 				found, filename = objectivesee(osq, hash, doNotExtract, "infect3d")
 			}
+		case UnpacMe:
+			found, filename = unpacme(mcr.Host, mcr.Api, hash)
+		case Malpedia:
+			found, filename = malpedia(mcr.Host, mcr.Api, hash)
 		case UploadMWDB:
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
 		}
@@ -178,6 +194,10 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		default_url = "https://api.polyswarm.network/v2"
 	case ObjectiveSee:
 		default_url = "https://objective-see.com/malware.json"
+	case UnpacMe:
+		default_url = "https://api.unpac.me/api/v1"
+	case Malpedia:
+		default_url = "https://malpedia.caad.fkie.fraunhofer.de/api"
 	}
 	if default_url != "" {
 		fmt.Printf("Enter Host [ Press enter for default - %s ]:\n", default_url)
@@ -222,6 +242,10 @@ func (malrepo MalwareRepoType) String() string {
 		return "Polyswarm"
 	case ObjectiveSee:
 		return "ObjectiveSee"
+	case UnpacMe:
+		return "UnpacMe"
+	case Malpedia:
+		return "Malpedia"
 	case UploadMWDB:
 		return "UploadMWDB"
 
@@ -230,14 +254,14 @@ func (malrepo MalwareRepoType) String() string {
 }
 
 func allowedMalwareRepoTypes() {
-	for mr := range MalwareRepoList {
-		fmt.Printf("    %s\n", MalwareRepoType(mr).String())
+	for _, mr := range getMalwareRepoList() {
+		fmt.Printf("    %s\n", mr.String())
 	}
 }
 
 func printAllowedMalwareRepoTypeOptions() {
 	fmt.Println("")
-	for _, mr := range MalwareRepoList {
+	for _, mr := range getMalwareRepoList() {
 		fmt.Printf("  [%d]    %s\n", mr, mr.String())
 	}
 }
@@ -295,6 +319,10 @@ func getMalwareRepoByFlagName(name string) MalwareRepoType {
 		return Polyswarm
 	case strings.ToLower("os"):
 		return ObjectiveSee
+	case strings.ToLower("um"):
+		return UnpacMe
+	case strings.ToLower("mp"):
+		return Malpedia
 	}
 	return NotSupported
 }
@@ -323,6 +351,10 @@ func getMalwareRepoByName(name string) MalwareRepoType {
 		return Polyswarm
 	case strings.ToLower("ObjectiveSee"):
 		return ObjectiveSee
+	case strings.ToLower("UnpacMe"):
+		return UnpacMe
+	case strings.ToLower("Malpedia"):
+		return Malpedia
 	case strings.ToLower("UploadMWDB"):
 		return UploadMWDB
 	}

@@ -901,6 +901,89 @@ func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool, password st
 		return true, hash.Hash
 	}
 }
+
+func unpacme(uri string, api string, hash Hash) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	if hash.HashType != sha256 {
+		fmt.Printf("    [!] UnpacMe only supports SHA256\n        Skipping\n")
+	}
+
+	return unpacmeDownload(uri, api, hash)
+}
+
+func unpacmeDownload(uri string, api string, hash Hash) (bool, string) {
+	request, error := http.NewRequest("GET", uri+"/private/download/"+url.PathEscape(hash.Hash), nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", "Key "+api)
+
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	error = writeToFile(response.Body, hash.Hash)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
+	return true, hash.Hash
+}
+
+func malpedia(uri string, api string, hash Hash) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	if hash.HashType == sha1 {
+		fmt.Printf("    [!] Malpedia only supports MD5 and SHA256\n        Skipping\n")
+	}
+
+	return malpediaDownload(uri, api, hash)
+
+}
+
+func malpediaDownload(uri string, api string, hash Hash) (bool, string) {
+	///get/sample/<md5>/raw
+	request, error := http.NewRequest("GET", uri+"/get/sample/"+url.PathEscape(hash.Hash)+"/raw", nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", "apitoken "+api)
+
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	error = writeToFile(response.Body, hash.Hash)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
+	return true, hash.Hash
+}
+
 func extractGzip(hash string) error {
 	r, err := os.Open(hash + ".gzip")
 	if err != nil {
