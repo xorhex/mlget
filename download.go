@@ -26,8 +26,8 @@ type JoeSandboxQueryData struct {
 }
 
 type InquestLabsQuery struct {
-	Data    *InquestLabsQueryData `json:"data"`
-	Success string                `json:"success"`
+	Data    []InquestLabsQueryData `json:"data"`
+	Success bool                   `json:"success"`
 }
 
 type InquestLabsQueryData struct {
@@ -126,7 +126,7 @@ func loadObjectiveSeeJson(uri string) (ObjectiveSeeQuery, error) {
 	}
 }
 
-func objectivesee(data ObjectiveSeeQuery, hash Hash, doNotExtract bool, password string) (bool, string) {
+func objectivesee(data ObjectiveSeeQuery, hash Hash, doNotExtract bool) (bool, string) {
 	if hash.HashType != sha256 {
 		fmt.Printf("    [!] Objective-See only supports SHA256\n        Skipping\n")
 	}
@@ -373,11 +373,19 @@ func inquestlabs(uri string, api string, hash Hash) (bool, string) {
 				return false, ""
 			}
 
-			if data.Data.Sha256 == "" {
+			if !data.Success {
+				return false, ""
+			}
+
+			if len(data.Data) == 0 {
+				return false, ""
+			}
+
+			if data.Data[0].Sha256 == "" {
 				return false, ""
 			}
 			hash.HashType = sha256
-			hash.Hash = data.Data.Sha256
+			hash.Hash = data.Data[0].Sha256
 			fmt.Printf("    [-] Using hash %s\n", hash.Hash)
 
 		} else if response.StatusCode == http.StatusForbidden {
@@ -902,6 +910,134 @@ func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool, password st
 	}
 }
 
+func filescanio(uri string, api string, hash Hash, doNotExtract bool) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+	return filescaniodownload(uri, api, hash, doNotExtract)
+}
+
+func filescaniodownload(uri string, api string, hash Hash, doNotExtract bool) (bool, string) {
+	query := "type=raw"
+	_, error := url.ParseQuery(query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request, error := http.NewRequest("GET", uri+"/files/"+url.PathEscape(hash.Hash)+"?"+query, nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("X-Api-Key", api)
+
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode == 404 {
+		return false, ""
+	} else if response.StatusCode == 422 {
+		fmt.Printf("    [!] Validation Error.\n")
+		return false, ""
+	} else if response.StatusCode == http.StatusForbidden {
+		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
+		return false, ""
+	}
+
+	error = writeToFile(response.Body, hash.Hash+".zip")
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	fmt.Printf("    [+] Downloaded %s\n", hash.Hash+".zip")
+	if doNotExtract {
+		return true, hash.Hash + ".zip"
+	} else {
+		fmt.Println("    [-] Extracting...")
+		files, err := extractPwdZip(hash.Hash, "infected")
+		if err != nil {
+			fmt.Println(err)
+			return false, ""
+		} else {
+			for _, f := range files {
+				fmt.Printf("    [-] Extracted %s\n", f.Name)
+			}
+		}
+		os.Remove(hash.Hash + ".zip")
+		return true, hash.Hash
+	}
+}
+
+func vxshare(uri string, api string, hash Hash, doNotExtract bool, password string) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+	return vxsharedownload(uri, api, hash, doNotExtract, password)
+}
+
+func vxsharedownload(uri string, api string, hash Hash, doNotExtract bool, password string) (bool, string) {
+	query := "apikey=" + url.QueryEscape(api) + "&hash=" + url.QueryEscape(hash.Hash)
+	_, error := url.ParseQuery(query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	client := &http.Client{}
+	response, error := client.Get(uri + "/download?" + query)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode == 404 {
+		return false, ""
+	} else if response.StatusCode == 204 {
+		fmt.Printf("    [!] Request rate limit exceeded. You are making more requests than are allowed or have exceeded your quota.\n")
+		return false, ""
+	} else if response.StatusCode == http.StatusForbidden {
+		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
+		return false, ""
+	}
+
+	error = writeToFile(response.Body, hash.Hash+".zip")
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
+	if doNotExtract {
+		return true, hash.Hash + ".zip"
+	} else {
+		fmt.Println("    [-] Extracting...")
+		files, err := extractPwdZip(hash.Hash, password)
+		if err != nil {
+			fmt.Println(err)
+			return false, ""
+		} else {
+			for _, f := range files {
+				fmt.Printf("    [-] Extracted %s\n", f.Name)
+			}
+		}
+		os.Remove(hash.Hash + ".zip")
+		return true, hash.Hash
+	}
+}
+
 func unpacme(uri string, api string, hash Hash) (bool, string) {
 	if api == "" {
 		fmt.Println("    [!] !! Missing Key !!")
@@ -910,6 +1046,7 @@ func unpacme(uri string, api string, hash Hash) (bool, string) {
 
 	if hash.HashType != sha256 {
 		fmt.Printf("    [!] UnpacMe only supports SHA256\n        Skipping\n")
+		return false, ""
 	}
 
 	return unpacmeDownload(uri, api, hash)
@@ -932,6 +1069,13 @@ func unpacmeDownload(uri string, api string, hash Hash) (bool, string) {
 	}
 
 	defer response.Body.Close()
+
+	if response.StatusCode == 404 {
+		return false, ""
+	} else if response.StatusCode == http.StatusForbidden {
+		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
+		return false, ""
+	}
 
 	error = writeToFile(response.Body, hash.Hash)
 	if error != nil {
@@ -975,6 +1119,13 @@ func malpediaDownload(uri string, api string, hash Hash) (bool, string) {
 
 	defer response.Body.Close()
 
+	if response.StatusCode == 404 {
+		return false, ""
+	} else if response.StatusCode == http.StatusForbidden {
+		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
+		return false, ""
+	}
+
 	error = writeToFile(response.Body, hash.Hash)
 	if error != nil {
 		fmt.Println(error)
@@ -1012,7 +1163,7 @@ func extractPwdZip(hash string, password string) ([]*zip.File, error) {
 
 	for _, f := range r.File {
 		if f.IsEncrypted() {
-			f.SetPassword("infected")
+			f.SetPassword(password)
 		}
 
 		r, err := f.Open()

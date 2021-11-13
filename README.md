@@ -33,6 +33,7 @@ Use mlget to query multiple sources for a given malware hash and download it.  T
 Currently queries:
 
   - cp (Cape Sandbox)
+  - fs (File Scan)
   - ha (Hybrid Analysis)
   - iq (Inquest Labs)
   - js (Joe Sandbox)
@@ -45,6 +46,7 @@ Currently queries:
   - tg (Triage)
   - um (UnpacMe)
   - vt (VirusTotal)
+  - vx (VxShare)
 
 Only Malware Bazaar and Objective-See does not require a key, the rest require a key.  The config file needs to be placed in the user's home directory (essentially where `os.UserHomeDir()` resolves to).
 
