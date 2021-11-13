@@ -67,7 +67,7 @@ func TestCapeSandbox(t *testing.T) {
 	}
 }
 
-func TestInquestLabs(t *testing.T) {
+func TestInquestLabsLookUp(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
 	if err != nil {
@@ -75,7 +75,27 @@ func TestInquestLabs(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 
-	hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	hash := Hash{HashType: md5, Hash: "b3f868fa1af24f270e3ecc0ecb79325e"}
+
+	var osq ObjectiveSeeQuery
+	result, _ := InQuest.QueryAndDownload(cfg, hash, false, osq)
+
+	if !result {
+		t.Errorf("InquestLabs failed")
+	} else {
+		os.Remove(hash.Hash)
+	}
+}
+
+func TestInquestLabsNoLookUp(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	hash := Hash{HashType: sha256, Hash: "6b425804d43bb369211bbec59808807730a908804ca9b8c09081139179bbc868"}
 
 	var osq ObjectiveSeeQuery
 	result, _ := InQuest.QueryAndDownload(cfg, hash, false, osq)
@@ -215,7 +235,8 @@ func TestMalwareBazaar(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 
-	hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	//hash := Hash{HashType: sha256, Hash: "75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18"}
+	hash := Hash{HashType: sha256, Hash: "bbe855f9259345af18de5f2cfd759eb78782b664bb22c43f19177dab51d782da"}
 
 	var osq ObjectiveSeeQuery
 	result, _ := MalwareBazaar.QueryAndDownload(cfg, hash, false, osq)
@@ -262,6 +283,46 @@ func TestUnpacme(t *testing.T) {
 
 	if !result {
 		t.Errorf("Unpacme failed")
+	} else {
+		os.Remove(hash.Hash)
+	}
+}
+
+func TestVxShare(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	hash := Hash{HashType: sha256, Hash: "1c11c963a417674e1414bac05fdbfa5cfa09f92c7b0d9882aeb55ce2a058d668"}
+
+	var osq ObjectiveSeeQuery
+	result, _ := VxShare.QueryAndDownload(cfg, hash, false, osq)
+
+	if !result {
+		t.Errorf("VxShare failed")
+	} else {
+		os.Remove(hash.Hash)
+	}
+}
+
+func TestFileScanIo(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	hash := Hash{HashType: sha256, Hash: "2799af2efd698da215afc9c88da3b1e84b00137433d9444a5c11d69092b3f80d"}
+
+	var osq ObjectiveSeeQuery
+	result, _ := FileScanIo.QueryAndDownload(cfg, hash, false, osq)
+
+	if !result {
+		t.Errorf("FileScanIo failed")
 	} else {
 		os.Remove(hash.Hash)
 	}

@@ -67,6 +67,7 @@ const (
 	NotSupported MalwareRepoType = iota //NotSupported must always be first, or other things won't work as expected
 
 	CapeSandbox
+	FileScanIo
 	HybridAnalysis
 	InQuest
 	JoeSandbox
@@ -79,6 +80,7 @@ const (
 	Triage
 	UnpacMe
 	VirusTotal
+	VxShare
 
 	//UploadMWDB must always be last, or other things won't work as expected
 	UploadMWDB
@@ -127,12 +129,16 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 			found, filename = capesandbox(mcr.Host, mcr.Api, hash)
 		case ObjectiveSee:
 			if len(osq.Malware) > 0 {
-				found, filename = objectivesee(osq, hash, doNotExtract, "infect3d")
+				found, filename = objectivesee(osq, hash, doNotExtract)
 			}
 		case UnpacMe:
 			found, filename = unpacme(mcr.Host, mcr.Api, hash)
 		case Malpedia:
 			found, filename = malpedia(mcr.Host, mcr.Api, hash)
+		case VxShare:
+			found, filename = vxshare(mcr.Host, mcr.Api, hash, doNotExtract, "infected")
+		case FileScanIo:
+			found, filename = filescanio(mcr.Host, mcr.Api, hash, doNotExtract)
 		case UploadMWDB:
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
 		}
@@ -181,7 +187,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 	case CapeSandbox:
 		default_url = "https://www.capesandbox.com/apiv2"
 	case JoeSandbox:
-		default_url = "https://jbxcloud.joesecurity.org/api"
+		default_url = "https://joesecurity.org/api"
 	case InQuest:
 		default_url = "https://labs.inquest.net/api"
 	case HybridAnalysis:
@@ -198,6 +204,10 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		default_url = "https://api.unpac.me/api/v1"
 	case Malpedia:
 		default_url = "https://malpedia.caad.fkie.fraunhofer.de/api"
+	case VxShare:
+		default_url = "https://virusshare.com/apiv2"
+	case FileScanIo:
+		default_url = "https://www.filescan.io/api"
 	}
 	if default_url != "" {
 		fmt.Printf("Enter Host [ Press enter for default - %s ]:\n", default_url)
@@ -246,6 +256,10 @@ func (malrepo MalwareRepoType) String() string {
 		return "UnpacMe"
 	case Malpedia:
 		return "Malpedia"
+	case VxShare:
+		return "VxShare"
+	case FileScanIo:
+		return "FileScanIo"
 	case UploadMWDB:
 		return "UploadMWDB"
 
@@ -323,6 +337,10 @@ func getMalwareRepoByFlagName(name string) MalwareRepoType {
 		return UnpacMe
 	case strings.ToLower("mp"):
 		return Malpedia
+	case strings.ToLower("vx"):
+		return VxShare
+	case strings.ToLower("fs"):
+		return FileScanIo
 	}
 	return NotSupported
 }
@@ -355,6 +373,10 @@ func getMalwareRepoByName(name string) MalwareRepoType {
 		return UnpacMe
 	case strings.ToLower("Malpedia"):
 		return Malpedia
+	case strings.ToLower("VxShare"):
+		return VxShare
+	case strings.ToLower("FileScanIo"):
+		return FileScanIo
 	case strings.ToLower("UploadMWDB"):
 		return UploadMWDB
 	}

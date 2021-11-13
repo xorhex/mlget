@@ -44,30 +44,34 @@ func parseFileForHashEntries(filename string) ([]Hash, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() { // internally, it advances token based on sperator
 		text := scanner.Text()
-		hash := strings.FieldsFunc(text, f)[0]
-		tags := []string{}
-		comments := []string{}
-		if len(strings.FieldsFunc(text, f)) > 1 {
-			fields := strings.FieldsFunc(text, f)[1:len(strings.FieldsFunc(text, f))]
-			tagSection := false
-			commentSection := false
-			for _, f := range fields {
-				if f == "TAGS" {
-					tagSection = true
-					commentSection = false
-				} else if f == "COMMENTS" {
-					tagSection = false
-					commentSection = true
-				} else if f != "TAGS" && f != "COMMENTS" && tagSection {
-					tags = append(tags, f)
-				} else if f != "TAGS" && f != "COMMENTS" && commentSection {
-					comments = append(comments, f)
+		if len(strings.TrimSpace(text)) > 0 {
+			hash := strings.FieldsFunc(strings.TrimSpace(text), f)[0]
+			tags := []string{}
+			comments := []string{}
+			if len(strings.FieldsFunc(text, f)) > 1 {
+				fields := strings.FieldsFunc(text, f)[1:len(strings.FieldsFunc(text, f))]
+				tagSection := false
+				commentSection := false
+				for _, f := range fields {
+					if f == "TAGS" {
+						tagSection = true
+						commentSection = false
+					} else if f == "COMMENTS" {
+						tagSection = false
+						commentSection = true
+					} else if f != "TAGS" && f != "COMMENTS" && tagSection {
+						tags = append(tags, f)
+					} else if f != "TAGS" && f != "COMMENTS" && commentSection {
+						comments = append(comments, f)
+					}
 				}
 			}
+			pHash := Hash{}
+			pHash, err = parseFileHashEntry(hash, tags, comments)
+			if err == nil {
+				hashes = append(hashes, pHash)
+			}
 		}
-		pHash := Hash{}
-		pHash, err = parseFileHashEntry(hash, tags, comments)
-		hashes = append(hashes, pHash)
 	}
 	return hashes, nil
 }
