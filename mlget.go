@@ -24,7 +24,7 @@ var tagsFlag []string
 var commentsFlag []string
 var versionFlag bool
 
-var version string = "2.5"
+var version string = "2.5.1"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
