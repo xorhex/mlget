@@ -1075,6 +1075,9 @@ func unpacmeDownload(uri string, api string, hash Hash) (bool, string) {
 	} else if response.StatusCode == http.StatusForbidden {
 		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
 		return false, ""
+	} else if response.StatusCode == 401 {
+		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
+		return false, ""
 	}
 
 	error = writeToFile(response.Body, hash.Hash)
