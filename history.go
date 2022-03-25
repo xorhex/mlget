@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -21,9 +24,74 @@ func writeToFile(file io.ReadCloser, filename string) error {
 	return err
 }
 
+// Code for this function came from - https://golangcode.com/how-to-check-if-a-string-is-a-url/
+// isValidUrl tests a string to determine if it is a well-structured url or not.
+func isValidUrl(toTest string) bool {
+	_, err := url.ParseRequestURI(toTest)
+	if err != nil {
+		return false
+	}
+
+	u, err := url.Parse(toTest)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return false
+	}
+
+	return true
+}
+
+// https://golangcode.com/check-if-a-file-exists/
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func downloadFromUrl(url string) (string, error) {
+
+	filename := "mlget.download.data.tmp"
+
+	r, err := http.Get(url)
+	if err != nil {
+		log.Println("Cannot get from URL", err)
+		return "", err
+	}
+
+	defer r.Body.Close()
+
+	if !fileExists(filename) {
+
+		file, _ := os.Create(filename)
+		defer file.Close()
+
+		writer := bufio.NewWriter(file)
+		io.Copy(writer, r.Body)
+		writer.Flush()
+
+		return filename, nil
+
+	} else {
+		return "", fmt.Errorf("file %s already exists - delete and try again", filename)
+	}
+}
+
 func parseFileForHashEntries(filename string) ([]Hash, error) {
 	hashes := []Hash{}
-	file, err := os.Open(filename)
+	var _filename string
+	var err error
+
+	if isValidUrl(filename) {
+		_filename, err = downloadFromUrl(filename)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		_filename = filename
+	}
+
+	file, err := os.Open(_filename)
 	if err != nil {
 		fmt.Println("Error reading file")
 		fmt.Println(err)
@@ -42,7 +110,7 @@ func parseFileForHashEntries(filename string) ([]Hash, error) {
 	}
 
 	scanner := bufio.NewScanner(file)
-	for scanner.Scan() { // internally, it advances token based on sperator
+	for scanner.Scan() { // internally, it advances token based on separator
 		text := scanner.Text()
 		if len(strings.TrimSpace(text)) > 0 {
 			hash := strings.FieldsFunc(strings.TrimSpace(text), f)[0]
@@ -73,6 +141,11 @@ func parseFileForHashEntries(filename string) ([]Hash, error) {
 			}
 		}
 	}
+
+	if _filename == "mlget.download.data.tmp" {
+		os.Remove(_filename)
+	}
+
 	return hashes, nil
 }
 
