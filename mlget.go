@@ -24,7 +24,7 @@ var tagsFlag []string
 var commentsFlag []string
 var versionFlag bool
 
-var version string = "2.5.1"
+var version string = "2.5.2"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
@@ -209,7 +209,7 @@ func main() {
 		}
 	}
 	if !downloadOnlyFlag {
-		if readFromFileAndUpdateWithNotFoundHashesFlag != "" {
+		if readFromFileAndUpdateWithNotFoundHashesFlag != "" && !isValidUrl(readFromFileAndUpdateWithNotFoundHashesFlag) {
 			err := writeUnfoundHashesToFile(readFromFileAndUpdateWithNotFoundHashesFlag, notFoundHashes)
 			if err != nil {
 				fmt.Println("Error writing unfound hashes to file")
@@ -230,6 +230,8 @@ func main() {
 				fmt.Println(err)
 			}
 			fmt.Printf("\n\nUnfound hashes written to %s\n", filename)
+		} else if isValidUrl(readFromFileAndUpdateWithNotFoundHashesFlag) {
+			fmt.Println("File specified is a URL - can't update file.  Please use --read and --output flags instead if you want to capture the hashes not found.")
 		}
 	}
 }
