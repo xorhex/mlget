@@ -1,39 +1,29 @@
 # .github/workflows/release.yaml
 
+# .github/workflows/release.yaml
 
-# workflow name
-name: release
-
-# on events
-on:
+on: 
   release:
-    types:
-      - created
+    types: [created, draft]
 
-# jobs
 jobs:
-  # generate build cross-platform build files
-  generate:
-    name: Generate cross-platform builds
+  releases-matrix:
+    name: Release Go Binary
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # build and publish in parallel: linux/386, linux/amd64, windows/386, windows/amd64, darwin/amd64 
+        goos: [linux, windows, darwin]
+        goarch: [amd64]
     steps:
-      # step 1: checkout repository code
-      - name: Checkout the repository
-        uses: actions/checkout@v2
-
-      # step 2: generate build files
-      - name: Generate build files
-        uses: thatisuday/go-build-action@v1
-        with:
-          platforms: "linux/amd64, darwin/amd64, windows/amd64"
-          name: "mlget"
-          compress: "false"
-          dest: "dist"
-
-      # step 3: upload build-artifacts
-      - name: Upload build-artifacts
-        uses: skx/github-action-publish-binaries@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: "./dist/*"
+    - uses: actions/checkout@v2
+    - uses: wangyoucao577/go-release-action@v1.25
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goos: ${{ matrix.goos }}
+        goarch: ${{ matrix.goarch }}
+        sha256sum: true
+        build_command: go build
+        build_flags: -v
+        pre_command: go get -u
+        binary_name: "mlget"
