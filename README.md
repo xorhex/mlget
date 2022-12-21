@@ -33,7 +33,7 @@ Use mlget to query multiple sources for a given malware hash and download it.  T
 Currently queries:
 
   - cp (Cape Sandbox)
-  - fs (File Scan)
+  - fs (FileScanIO)
   - ha (Hybrid Analysis)
   - iq (Inquest Labs)
   - js (Joe Sandbox)
