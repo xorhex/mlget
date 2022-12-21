@@ -7,6 +7,7 @@ import (
 	"time"
 
 	flag "github.com/spf13/pflag"
+	"golang.org/x/exp/slices"
 )
 
 var apiFlag string
@@ -23,8 +24,9 @@ var readFromFileAndUpdateWithNotFoundHashesFlag string
 var tagsFlag []string
 var commentsFlag []string
 var versionFlag bool
+var noValidationFlag bool
 
-var version string = "2.5.2"
+var version string = "3.0.0"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
@@ -40,7 +42,7 @@ func usage() {
 }
 
 func init() {
-	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - cp (Cape Sandbox)\n  - fs (FileScanIo)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tg (Triage)\n  - um (UnpacMe)\n  - vt (VirusTotal)\n  - vx (VxShare)\nIf omitted, all services will be tried.")
+	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - ar (Any.Run)\n  - cp (Cape Sandbox)\n  - fs (FileScanIo)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tg (Triage)\n  - um (UnpacMe)\n  -us (URLScanIO)\n  - vt (VirusTotal)\n  - vx (VxShare)\nIf omitted, all services will be tried.")
 	flag.StringVar(&inputFileFlag, "read", "", "Read in a file of hashes (one per line)")
 	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the --read flag)")
 	flag.BoolVar(&helpFlag, "help", false, "Print the help message")
@@ -54,9 +56,13 @@ func init() {
 	flag.StringSliceVar(&commentsFlag, "comment", []string{}, "Add comment to the sample when uploading to your own instance of MWDB.")
 	flag.BoolVar(&downloadOnlyFlag, "downloadonly", false, "Download from any source, including your personal instance of MWDB.\nWhen this flag is set; it will NOT update any output file with the hashes not found.\nAnd it will not upload to any of the UploadMWDB instances.")
 	flag.BoolVar(&versionFlag, "version", false, "Print the version number")
+	flag.BoolVar(&noValidationFlag, "novalidation", false, "Turn off post download hash check verification")
 }
 
 func main() {
+
+	noSamplesRepoList := []MalwareRepoType{AnyRun}
+	doNotValidatehash := []MalwareRepoType{ObjectiveSee}
 
 	if versionFlag {
 		fmt.Printf("Mlget version: %s\n", version)
@@ -153,6 +159,10 @@ func main() {
 		return
 	}
 
+	if doNotExtractFlag {
+		doNotValidatehash = append(doNotValidatehash, VxShare, MalwareBazaar, HybridAnalysis, FileScanIo)
+	}
+
 	for idx, h := range hashes.Hashes {
 		fmt.Printf("\nLook up %s (%s) - (%d of %d)\n", h.Hash, h.HashType, idx+1, len(hashes.Hashes))
 
@@ -171,11 +181,28 @@ func main() {
 
 			fmt.Printf("Looking on %s\n", getMalwareRepoByFlagName(apiFlag))
 
-			found, filename := flaggedRepo.QueryAndDownload(cfg, h, doNotExtractFlag, osq)
+			found, filename, checkedRepo := flaggedRepo.QueryAndDownload(cfg, h, doNotExtractFlag, osq)
 			if !found {
 				fmt.Println("    [!] Not Found")
 				notFoundHashes, _ = addHash(notFoundHashes, h)
-			} else {
+			} else if found && !slices.Contains(noSamplesRepoList, checkedRepo) {
+				if !noValidationFlag {
+					if slices.Contains(doNotValidatehash, checkedRepo) {
+						if checkedRepo == ObjectiveSee {
+							fmt.Printf("    [!] Not able to validate hash for repo %s\n", checkedRepo.String())
+						} else {
+							fmt.Printf("    [!] Not able to validate hash for repo %s when noextraction flag is set to %t\n", checkedRepo.String(), doNotExtractFlag)
+						}
+					} else {
+						valid, calculatedHash := h.ValidateFile(filename)
+						if !valid {
+							fmt.Printf("    [!] Downloaded file hash %s does not match searched for hash %s\n", calculatedHash, h.Hash)
+							continue
+						} else {
+							fmt.Printf("    [+] Downloaded file %s validated as the requested hash\n", h.Hash)
+						}
+					}
+				}
 				if (uploadToMWDBFlag || uploadToMWDBAndDeleteFlag) && !downloadOnlyFlag {
 					err := UploadSampleToMWDBs(cfg, filename, h, uploadToMWDBAndDeleteFlag)
 					if err != nil {
@@ -187,8 +214,8 @@ func main() {
 		} else {
 			fmt.Println("Querying all services")
 
-			found, filename := queryAndDownloadAll(cfg, h, doNotExtractFlag, !downloadOnlyFlag, osq)
-			if found {
+			found, filename, checkedRepo := queryAndDownloadAll(cfg, h, doNotExtractFlag, !downloadOnlyFlag, osq, noValidationFlag, noSamplesRepoList, doNotValidatehash)
+			if found && checkedRepo != AnyRun {
 				if (uploadToMWDBFlag || uploadToMWDBAndDeleteFlag) && !downloadOnlyFlag {
 					err := UploadSampleToMWDBs(cfg, filename, h, uploadToMWDBAndDeleteFlag)
 					if err != nil {
