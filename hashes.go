@@ -1,9 +1,14 @@
 package main
 
 import (
+	"crypto"
 	"errors"
 	"fmt"
+	"io"
+	"log"
+	"os"
 	"regexp"
+	"strings"
 )
 
 type Hashes struct {
@@ -81,6 +86,64 @@ func (h Hash) TagExists(tag string) bool {
 		}
 	}
 	return false
+}
+
+func (h Hash) ValidateFile(filename string) (bool, string) {
+	f, err := os.Open(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	var sum []byte
+
+	if h.HashType == md5 {
+		hasher := crypto.MD5.New()
+		if _, err := io.Copy(hasher, f); err != nil {
+			log.Fatal(err)
+		}
+		sum = hasher.Sum(nil)
+	} else if h.HashType == sha1 {
+		hasher := crypto.SHA1.New()
+		if _, err := io.Copy(hasher, f); err != nil {
+			log.Fatal(err)
+		}
+		sum = hasher.Sum(nil)
+	} else if h.HashType == sha256 {
+		hasher := crypto.SHA256.New()
+		if _, err := io.Copy(hasher, f); err != nil {
+			log.Fatal(err)
+		}
+		sum = hasher.Sum(nil)
+	}
+	if (fmt.Sprintf("%x", sum)) == strings.ToLower(h.Hash) {
+		return true, fmt.Sprintf("%x", sum)
+	} else {
+		return false, fmt.Sprintf("%x", sum)
+	}
+}
+
+func (h Hash) Validate(bytes []byte) (bool, string) {
+	var sum []byte
+
+	if h.HashType == md5 {
+		hasher := crypto.MD5.New()
+		hasher.Write(bytes)
+		sum = hasher.Sum(nil)
+	} else if h.HashType == sha1 {
+		hasher := crypto.SHA1.New()
+		hasher.Write(bytes)
+		sum = hasher.Sum(nil)
+	} else if h.HashType == sha256 {
+		hasher := crypto.SHA256.New()
+		hasher.Write(bytes)
+		sum = hasher.Sum(nil)
+	}
+	if (fmt.Sprintf("%x", sum)) == strings.ToLower(h.Hash) {
+		return true, fmt.Sprintf("%x", sum)
+	} else {
+		return false, fmt.Sprintf("%x", sum)
+	}
 }
 
 func hashType(hash string) (HashTypeOption, error) {

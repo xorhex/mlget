@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -75,6 +76,11 @@ type ObjectiveSeeData struct {
 	MoreInfo   string `json:"moreInfo"`
 	Download   string `json:"download"`
 	Sha256     string
+}
+
+type MalpediaData struct {
+	Name      string
+	FileBytes []byte
 }
 
 func loadObjectiveSeeJson(uri string) (ObjectiveSeeQuery, error) {
@@ -177,7 +183,7 @@ func joesandbox(uri string, api string, hash Hash) (bool, string) {
 
 	fmt.Printf("    [-] Looking up sandbox ID for: %s\n", hash.Hash)
 
-	query := uri + "/v2/analysis/search"
+	query := uri + "/analysis/search"
 
 	_, error := url.ParseRequestURI(query)
 	if error != nil {
@@ -238,7 +244,7 @@ func joesandbox(uri string, api string, hash Hash) (bool, string) {
 }
 
 func joesandboxDownload(uri string, api string, sandboxid string, hash Hash) (bool, string) {
-	query := uri + "/v2/analysis/download"
+	query := uri + "/analysis/download"
 
 	_, error := url.ParseRequestURI(query)
 	if error != nil {
@@ -910,15 +916,15 @@ func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool, password st
 	}
 }
 
-func filescanio(uri string, api string, hash Hash, doNotExtract bool) (bool, string) {
+func filescanio(uri string, api string, hash Hash, doNotExtract bool, password string) (bool, string) {
 	if api == "" {
 		fmt.Println("    [!] !! Missing Key !!")
 		return false, ""
 	}
-	return filescaniodownload(uri, api, hash, doNotExtract)
+	return filescaniodownload(uri, api, hash, doNotExtract, password)
 }
 
-func filescaniodownload(uri string, api string, hash Hash, doNotExtract bool) (bool, string) {
+func filescaniodownload(uri string, api string, hash Hash, doNotExtract bool, password string) (bool, string) {
 	query := "type=raw"
 	_, error := url.ParseQuery(query)
 	if error != nil {
@@ -964,7 +970,7 @@ func filescaniodownload(uri string, api string, hash Hash, doNotExtract bool) (b
 		return true, hash.Hash + ".zip"
 	} else {
 		fmt.Println("    [-] Extracting...")
-		files, err := extractPwdZip(hash.Hash, "infected")
+		files, err := extractPwdZip(hash.Hash, password)
 		if err != nil {
 			fmt.Println(err)
 			return false, ""
@@ -1089,29 +1095,68 @@ func unpacmeDownload(uri string, api string, hash Hash) (bool, string) {
 	return true, hash.Hash
 }
 
-func malpedia(uri string, api string, hash Hash) (bool, string) {
-	if api == "" {
-		fmt.Println("    [!] !! Missing Key !!")
+func anyrun(uri string, hash Hash) (bool, string) {
+	if uri == "" {
+		fmt.Println("    [!] !! Missing URI !!")
 		return false, ""
 	}
 
-	if hash.HashType == sha1 {
-		fmt.Printf("    [!] Malpedia only supports MD5 and SHA256\n        Skipping\n")
+	if hash.HashType != sha256 {
+		fmt.Printf("    [!] AnyRun only supports SHA256\n        Skipping\n")
+		return false, ""
 	}
 
-	return malpediaDownload(uri, api, hash)
+	return anyrunCheck(uri, hash)
 
 }
 
-func malpediaDownload(uri string, api string, hash Hash) (bool, string) {
-	///get/sample/<md5>/raw
-	request, error := http.NewRequest("GET", uri+"/get/sample/"+url.PathEscape(hash.Hash)+"/raw", nil)
+func anyrunCheck(uri string, hash Hash) (bool, string) {
+	request, error := http.NewRequest("GET", uri+"/"+url.PathEscape(hash.Hash), nil)
 	if error != nil {
 		fmt.Println(error)
 		return false, ""
 	}
 
-	request.Header.Set("Authorization", "apitoken "+api)
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode == 200 {
+		fmt.Println("    [$] Sample available on Any.Run at " + request.URL.String())
+		return true, ""
+	} else {
+		return false, ""
+
+	}
+}
+
+func urlscanio(uri string, api string, hash Hash) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	if hash.HashType != sha256 {
+		fmt.Printf("    [!] URLScanIO only supports SHA256\n        Skipping\n")
+	}
+
+	return urlscanioDownload(uri, api, hash)
+}
+
+func urlscanioDownload(uri string, api string, hash Hash) (bool, string) {
+	//downloads/<sha256>"
+	request, error := http.NewRequest("GET", uri+"/"+url.PathEscape(hash.Hash)+"/", nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("API-Key", api)
 
 	client := &http.Client{}
 	response, error := client.Do(request)
@@ -1136,6 +1181,95 @@ func malpediaDownload(uri string, api string, hash Hash) (bool, string) {
 	}
 	fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
 	return true, hash.Hash
+}
+
+func malpedia(uri string, api string, hash Hash) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	if hash.HashType == sha1 {
+		fmt.Printf("    [!] Malpedia only supports MD5 and SHA256\n        Skipping\n")
+	}
+
+	return malpediaDownload(uri, api, hash)
+
+}
+
+func malpediaDownload(uri string, api string, hash Hash) (bool, string) {
+	///get/sample/<md5>/raw
+	// Malpedia returns a json file of the file and all of the related files (base64 encoded)
+	// No way to determine which file is which, so hashing each file found to identify the correct file
+	request, error := http.NewRequest("GET", uri+"/get/sample/"+url.PathEscape(hash.Hash)+"/raw", nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", "apitoken "+api)
+
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode == 404 {
+		return false, ""
+	} else if response.StatusCode == http.StatusForbidden {
+		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
+		return false, ""
+	}
+
+	byteValue, _ := ioutil.ReadAll(response.Body)
+	jsonParseSuccesful, mpData := parseMalpediaJson(byteValue)
+	if jsonParseSuccesful {
+		for _, item := range mpData {
+			match, _ := hash.Validate(item.FileBytes)
+			if match {
+				error = writeBytesToFile(item.FileBytes, hash.Hash)
+				if error != nil {
+					fmt.Println(error)
+					return false, ""
+				}
+				fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
+				return true, hash.Hash
+			}
+		}
+	}
+	return false, ""
+}
+
+func parseMalpediaJson(byteValue []byte) (bool, []MalpediaData) {
+	// Code copied and modified fromm https://gist.github.com/mjohnsullivan/24647cae50928a34b5cc
+	// Unmarshal using a generic interface
+	var f interface{}
+	err := json.Unmarshal(byteValue, &f)
+	if err != nil {
+		fmt.Println("Error parsing JSON: ", err)
+		return false, nil
+	}
+
+	// JSON object parses into a map with string keys
+	itemsMap := f.(map[string]interface{})
+	var malpediaJsonItems []MalpediaData
+
+	for key := range itemsMap {
+		var item MalpediaData
+		item.Name = key
+		rawDecodedValue, err := base64.StdEncoding.DecodeString(itemsMap[key].(string))
+		if err != nil {
+			fmt.Println("Error base64 decoding the json value: ", err)
+			return false, nil
+		}
+		item.FileBytes = rawDecodedValue
+		malpediaJsonItems = append(malpediaJsonItems, item)
+	}
+	return true, malpediaJsonItems
 }
 
 func extractGzip(hash string) error {
@@ -1195,4 +1329,16 @@ func findHashInObjectiveSeeList(list []ObjectiveSeeData, hash Hash) (ObjectiveSe
 		}
 	}
 	return ObjectiveSeeData{}, false
+}
+
+func writeBytesToFile(bytes []byte, filename string) error {
+	// Create the file
+	out, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = out.Write(bytes)
+	return err
 }

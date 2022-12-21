@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/exp/slices"
 	"gopkg.in/yaml.v2"
 )
 
@@ -66,6 +67,7 @@ type MalwareRepoType int64
 const (
 	NotSupported MalwareRepoType = iota //NotSupported must always be first, or other things won't work as expected
 
+	AnyRun
 	CapeSandbox
 	FileScanIo
 	HybridAnalysis
@@ -79,6 +81,7 @@ const (
 	Polyswarm
 	Triage
 	UnpacMe
+	URLScanIO
 	VirusTotal
 	VxShare
 
@@ -86,7 +89,7 @@ const (
 	UploadMWDB
 )
 
-//var MalwareRepoList = []MalwareRepoType{CapeSandbox, HybridAnalysis, InQuest, JoeSandbox, Malpedia, Malshare, MalwareBazaar, MWDB, ObjectiveSee, Polyswarm, Triage, UnpacMe, VirusTotal, UploadMWDB}
+// var MalwareRepoList = []MalwareRepoType{CapeSandbox, HybridAnalysis, InQuest, JoeSandbox, Malpedia, Malshare, MalwareBazaar, MWDB, ObjectiveSee, Polyswarm, Triage, UnpacMe, VirusTotal, UploadMWDB}
 func getMalwareRepoList() []MalwareRepoType {
 	var malwareRepoList []MalwareRepoType
 	for repo := range [UploadMWDB + 1]int64{} {
@@ -97,7 +100,7 @@ func getMalwareRepoList() []MalwareRepoType {
 	return malwareRepoList
 }
 
-func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, osq ObjectiveSeeQuery) (bool, string) {
+func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, osq ObjectiveSeeQuery) (bool, string, MalwareRepoType) {
 	matchingConfigRepos := getConfigsByType(malrepo, repos)
 	if len(matchingConfigRepos) == 0 {
 		fmt.Printf("    [!] %s is not found in the yml config file\n", malrepo)
@@ -105,48 +108,76 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 	for _, mcr := range matchingConfigRepos {
 		found := false
 		filename := ""
+		checkedRepo := NotSupported
 		fmt.Printf("  [*] %s: %s\n", mcr.Type, mcr.Host)
 		switch malrepo {
 		case MalwareBazaar:
 			found, filename = malwareBazaar(mcr.Host, hash, doNotExtract, "infected")
+			checkedRepo = MalwareBazaar
 		case MWDB:
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
+			checkedRepo = MWDB
 		case Malshare:
 			found, filename = malshare(mcr.Host, mcr.Api, hash)
+			checkedRepo = Malshare
 		case Triage:
 			found, filename = triage(mcr.Host, mcr.Api, hash)
+			checkedRepo = Triage
 		case InQuest:
 			found, filename = inquestlabs(mcr.Host, mcr.Api, hash)
+			checkedRepo = InQuest
 		case HybridAnalysis:
 			found, filename = hybridAnlysis(mcr.Host, mcr.Api, hash, doNotExtract)
+			checkedRepo = HybridAnalysis
 		case Polyswarm:
 			found, filename = polyswarm(mcr.Host, mcr.Api, hash)
+			checkedRepo = Polyswarm
 		case VirusTotal:
 			found, filename = virustotal(mcr.Host, mcr.Api, hash)
+			checkedRepo = VirusTotal
 		case JoeSandbox:
 			found, filename = joesandbox(mcr.Host, mcr.Api, hash)
+			checkedRepo = JoeSandbox
 		case CapeSandbox:
 			found, filename = capesandbox(mcr.Host, mcr.Api, hash)
+			checkedRepo = CapeSandbox
 		case ObjectiveSee:
 			if len(osq.Malware) > 0 {
 				found, filename = objectivesee(osq, hash, doNotExtract)
+				checkedRepo = ObjectiveSee
 			}
 		case UnpacMe:
 			found, filename = unpacme(mcr.Host, mcr.Api, hash)
+			checkedRepo = UnpacMe
 		case Malpedia:
 			found, filename = malpedia(mcr.Host, mcr.Api, hash)
+			checkedRepo = Malpedia
 		case VxShare:
 			found, filename = vxshare(mcr.Host, mcr.Api, hash, doNotExtract, "infected")
+			checkedRepo = VxShare
 		case FileScanIo:
-			found, filename = filescanio(mcr.Host, mcr.Api, hash, doNotExtract)
+			found, filename = filescanio(mcr.Host, mcr.Api, hash, doNotExtract, "infected")
+			checkedRepo = FileScanIo
+		case URLScanIO:
+			found, filename = urlscanio(mcr.Host, mcr.Api, hash)
+			checkedRepo = URLScanIO
+		//case AnyRun:
+		//	found, filename = anyrun(mcr.Host, hash)
+		//	checkedRepo = AnyRun
 		case UploadMWDB:
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
+			checkedRepo = UploadMWDB
+		}
+		// So some repos we can't download from but we want to know that it exists at that service
+		// At the moment, this is just Any.Run but suspecct more will be added as time goes on
+		if checkedRepo == AnyRun && found {
+			continue
 		}
 		if found {
-			return found, filename
+			return found, filename, checkedRepo
 		}
 	}
-	return false, ""
+	return false, "", NotSupported
 }
 
 func (malrepo MalwareRepoType) VerifyRepoParams(repo RepositoryConfigEntry) bool {
@@ -158,6 +189,10 @@ func (malrepo MalwareRepoType) VerifyRepoParams(repo RepositoryConfigEntry) bool
 			return true
 		}
 	case ObjectiveSee:
+		if repo.Host != "" {
+			return true
+		}
+	case AnyRun:
 		if repo.Host != "" {
 			return true
 		}
@@ -187,7 +222,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 	case CapeSandbox:
 		default_url = "https://www.capesandbox.com/apiv2"
 	case JoeSandbox:
-		default_url = "https://joesecurity.org/api"
+		default_url = "https://jbxcloud.joesecurity.org/api/v2"
 	case InQuest:
 		default_url = "https://labs.inquest.net/api"
 	case HybridAnalysis:
@@ -208,6 +243,10 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		default_url = "https://virusshare.com/apiv2"
 	case FileScanIo:
 		default_url = "https://www.filescan.io/api"
+	case URLScanIO:
+		default_url = "https://urlscan.io/downloads"
+	case AnyRun:
+		default_url = "https://any.run/report"
 	}
 	if default_url != "" {
 		fmt.Printf("Enter Host [ Press enter for default - %s ]:\n", default_url)
@@ -220,7 +259,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		fmt.Println("Using the default url")
 		host = default_url
 	}
-	if malrepo != MalwareBazaar && malrepo != ObjectiveSee {
+	if malrepo != MalwareBazaar && malrepo != ObjectiveSee && malrepo != AnyRun {
 		fmt.Println("Enter API Key:")
 		fmt.Print(">> ")
 		fmt.Scanln(&api)
@@ -260,6 +299,10 @@ func (malrepo MalwareRepoType) String() string {
 		return "VxShare"
 	case FileScanIo:
 		return "FileScanIo"
+	case URLScanIO:
+		return "URLScanIO"
+	case AnyRun:
+		return "AnyRun"
 	case UploadMWDB:
 		return "UploadMWDB"
 
@@ -280,9 +323,10 @@ func printAllowedMalwareRepoTypeOptions() {
 	}
 }
 
-func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, skipUploadMWDBEntries bool, osq ObjectiveSeeQuery) (bool, string) {
+func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, skipUploadMWDBEntries bool, osq ObjectiveSeeQuery, doNotValidateHash bool, noSamplesRepoList []MalwareRepoType, doNotValidateHashList []MalwareRepoType) (bool, string, MalwareRepoType) {
 	found := false
 	filename := ""
+	checkedRepo := NotSupported
 	sort.Slice(repos[:], func(i, j int) bool {
 		return repos[i].QueryOrder < repos[j].QueryOrder
 	})
@@ -299,14 +343,33 @@ func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract 
 		}
 		mr := getMalwareRepoByName(repo.Type)
 		if !contains(completedTypes, mr) {
-			found, filename = mr.QueryAndDownload(repos, hash, doNotExtract, osq)
-			if found {
+			found, filename, checkedRepo = mr.QueryAndDownload(repos, hash, doNotExtract, osq)
+			if found && !slices.Contains(noSamplesRepoList, checkedRepo) {
+				if !doNotValidateHash {
+					if slices.Contains(doNotValidateHashList, checkedRepo) {
+						if checkedRepo == ObjectiveSee {
+							fmt.Printf("    [!] Not able to validate hash for repo %s\n", checkedRepo.String())
+						} else {
+							fmt.Printf("    [!] Not able to validate hash for repo %s when noextraction flag is set to %t\n", checkedRepo.String(), doNotExtractFlag)
+						}
+						break
+					} else {
+						valid, calculatedHash := hash.ValidateFile(filename)
+						if !valid {
+							fmt.Printf("    [!] Downloaded file hash %s does not match searched for hash %s\nTrying another source.\n", calculatedHash, hash.Hash)
+							continue
+						} else {
+							fmt.Printf("    [+] Downloaded file %s validated as the requested hash\n", hash.Hash)
+							break
+						}
+					}
+				}
 				break
 			}
 			completedTypes = append(completedTypes, mr)
 		}
 	}
-	return found, filename
+	return found, filename, checkedRepo
 }
 
 func getMalwareRepoByFlagName(name string) MalwareRepoType {
@@ -341,6 +404,10 @@ func getMalwareRepoByFlagName(name string) MalwareRepoType {
 		return VxShare
 	case strings.ToLower("fs"):
 		return FileScanIo
+	case strings.ToLower("us"):
+		return URLScanIO
+	case strings.ToLower("ar"):
+		return AnyRun
 	}
 	return NotSupported
 }
@@ -377,6 +444,10 @@ func getMalwareRepoByName(name string) MalwareRepoType {
 		return VxShare
 	case strings.ToLower("FileScanIo"):
 		return FileScanIo
+	case strings.ToLower("URLScanIO"):
+		return URLScanIO
+	case strings.ToLower("AnyRun"):
+		return AnyRun
 	case strings.ToLower("UploadMWDB"):
 		return UploadMWDB
 	}
