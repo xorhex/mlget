@@ -44,6 +44,7 @@ Currently queries:
   - os (Objective-See)
   - ps (PolySwarm)
   - tg (Triage)
+  - us (URLScanIO)
   - um (UnpacMe)
   - vt (VirusTotal)
   - vx (VxShare)
@@ -58,7 +59,7 @@ Only Malware Bazaar and Objective-See does not require a key, the rest require a
 
 MIT License
 
-Copyright (c) 2021 @xorhex
+Copyright (c) 2022 @xorhex
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
