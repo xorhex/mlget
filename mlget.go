@@ -26,7 +26,7 @@ var commentsFlag []string
 var versionFlag bool
 var noValidationFlag bool
 
-var version string = "3.0.0"
+var version string = "3.0.1"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
@@ -42,7 +42,7 @@ func usage() {
 }
 
 func init() {
-	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - ar (Any.Run)\n  - cp (Cape Sandbox)\n  - fs (FileScanIo)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tg (Triage)\n  - um (UnpacMe)\n  -us (URLScanIO)\n  - vt (VirusTotal)\n  - vx (VxShare)\nIf omitted, all services will be tried.")
+	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - cp (Cape Sandbox)\n  - fs (FileScanIo)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tg (Triage)\n  - um (UnpacMe)\n  - us (URLScanIO)\n  - vt (VirusTotal)\n  - vx (VxShare)\nIf omitted, all services will be tried.")
 	flag.StringVar(&inputFileFlag, "read", "", "Read in a file of hashes (one per line)")
 	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the --read flag)")
 	flag.BoolVar(&helpFlag, "help", false, "Print the help message")
