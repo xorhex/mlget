@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -53,6 +54,33 @@ type MalwareBazarQueryData struct {
 	Sha1_hash     string `json:"sha1_hash"`
 	Md5_hash      string `json:"md5_hash"`
 	File_name     string `json:"file_name"`
+}
+
+type AssemblyLineQuery struct {
+	Error_message  string                     `json:"api_error_message"`
+	Response       *AssemblyLineQueryResponse `json:"api_response"`
+	Server_version string                     `json:"api_server_version"`
+	Status_Code    int                        `json:"api_status_code"`
+}
+
+type AssemblyLineQueryResponse struct {
+	AL *AssemblyLineQueryALResponse `json:"al"`
+}
+
+type AssemblyLineQueryALResponse struct {
+	Error string                  `json:"error"`
+	Items []AssemblyLineQueryItem `json:"items"`
+}
+
+type AssemblyLineQueryItem struct {
+	Classification string                 `json:"classification"`
+	Data           *AssemblyLineQueryData `json:"data"`
+}
+
+type AssemblyLineQueryData struct {
+	Md5    string `json:"md5"`
+	Sha1   string `json:"sha1`
+	Sha256 string `json:"sha256"`
 }
 
 type TriageQuery struct {
@@ -1081,7 +1109,7 @@ func unpacmeDownload(uri string, api string, hash Hash) (bool, string) {
 	} else if response.StatusCode == http.StatusForbidden {
 		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
 		return false, ""
-	} else if response.StatusCode == 401 {
+	} else if response.StatusCode == http.StatusUnauthorized {
 		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
 		return false, ""
 	}
@@ -1270,6 +1298,114 @@ func parseMalpediaJson(byteValue []byte) (bool, []MalpediaData) {
 		malpediaJsonItems = append(malpediaJsonItems, item)
 	}
 	return true, malpediaJsonItems
+}
+
+func assemblyline(uri string, user string, api string, ignoretlserrors bool, hash Hash) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+	if user == "" {
+		fmt.Println("    [!] !! Missing User !!")
+		return false, ""
+	}
+
+	if hash.HashType != sha256 {
+		fmt.Printf("    [-] Looking up sha256 hash for %s\n", hash.Hash)
+
+		request, error := http.NewRequest("GET", uri+"/hash_search/"+url.PathEscape(hash.Hash)+"/", nil)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		request.Header.Set("Content-Type", "application/json; charset=UTF-8")
+		request.Header.Set("x-user", user)
+		request.Header.Set("x-apikey", api)
+
+		tr := &http.Transport{}
+		if ignoretlserrors {
+			fmt.Printf("    [!] Ignoring Certificate Errors.\n")
+			tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		}
+
+		client := &http.Client{Transport: tr}
+		response, error := client.Do(request)
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+		defer response.Body.Close()
+
+		if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusUnauthorized {
+			fmt.Printf("    [!] Not authorized.  Check the URL, User, and APIKey in the config.\n")
+			return false, ""
+		}
+
+		byteValue, _ := ioutil.ReadAll(response.Body)
+
+		var data = AssemblyLineQuery{}
+		error = json.Unmarshal(byteValue, &data)
+
+		if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		if data.Response.AL == nil {
+			return false, ""
+		}
+		hash.Hash = data.Response.AL.Items[0].Data.Sha256
+		hash.HashType = sha256
+		fmt.Printf("    [-] Using hash %s\n", hash.Hash)
+	}
+
+	return assemblylineDownload(uri, user, api, ignoretlserrors, hash)
+
+}
+
+func assemblylineDownload(uri string, user string, api string, ignoretlserrors bool, hash Hash) (bool, string) {
+	request, error := http.NewRequest("GET", uri+"/file/download/"+url.PathEscape(hash.Hash)+"/?encoding=raw", nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	request.Header.Set("x-user", user)
+	request.Header.Set("x-apikey", api)
+
+	tr := &http.Transport{}
+	if ignoretlserrors {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	client := &http.Client{Transport: tr}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusNotFound {
+		return false, ""
+	} else if response.StatusCode == http.StatusForbidden {
+		fmt.Printf("    [!] Not authorized.  Check the URL, User, and APIKey in the config.\n")
+		return false, ""
+	} else if response.StatusCode == http.StatusUnauthorized {
+		fmt.Printf("    [!] Not authorized.  Check the URL, User, and APIKey in the config.\n")
+		return false, ""
+	}
+
+	error = writeToFile(response.Body, hash.Hash)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
+	return true, hash.Hash
 }
 
 func extractGzip(hash string) error {

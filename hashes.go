@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+var alwaysDeleteInvalidFile = false
+
 type Hashes struct {
 	Hashes []Hash
 }
@@ -143,6 +145,26 @@ func (h Hash) Validate(bytes []byte) (bool, string) {
 		return true, fmt.Sprintf("%x", sum)
 	} else {
 		return false, fmt.Sprintf("%x", sum)
+	}
+}
+
+func deleteInvalidFile(filename string) {
+	if !alwaysDeleteInvalidFile {
+		var delete_file string
+		fmt.Printf("    [?] Delete invalid file? [A/Y/n] Always delete/Yes, this time/No, not this time\n")
+		fmt.Scanln(&delete_file)
+		if strings.ToUpper(delete_file) == "Y" || delete_file == "" || strings.ToUpper(delete_file) == "A" {
+			os.Remove(filename)
+			fmt.Printf("    [!] Deleted invalid file\n")
+			if strings.ToUpper(delete_file) == "A" {
+				alwaysDeleteInvalidFile = true
+			}
+		} else {
+			fmt.Printf("    [!] Keeping invalid file\n")
+		}
+	} else {
+		os.Remove(filename)
+		fmt.Printf("    [!] Deleted invalid file\n")
 	}
 }
 
