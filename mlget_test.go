@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -25,7 +24,7 @@ func parseTestConfig(path string, testName string) (TestConfigEntry, error) {
 		return tce, err
 	}
 
-	f, err := ioutil.ReadFile(path)
+	f, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Printf("%v", err)
 		return tce, err
@@ -440,7 +439,7 @@ func TestMalwareBazaar(t *testing.T) {
 	result, filename, _ := MalwareBazaar.QueryAndDownload(cfg, hash, false, osq)
 
 	if !result {
-		t.Errorf("Malshare failed")
+		t.Errorf("MalwareBazaar failed")
 	} else {
 		valid, errmsg := hash.ValidateFile(filename)
 
@@ -620,6 +619,41 @@ func TestURLScanIo(t *testing.T) {
 			t.Errorf(errmsg)
 		} else {
 			os.Remove(hash.Hash)
+		}
+	}
+
+}
+
+func TestAssemblyLine(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	scfg, err := parseTestConfig("./mlget-test-config/samples.yaml", t.Name())
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	ht, _ := hashType(scfg.Hash)
+	hash := Hash{HashType: ht, Hash: scfg.Hash}
+
+	var osq ObjectiveSeeQuery
+	result, filename, _ := AssemblyLine.QueryAndDownload(cfg, hash, false, osq)
+
+	if !result {
+		t.Errorf("Assemblyline failed")
+	} else {
+		valid, errmsg := hash.ValidateFile(filename)
+
+		if !valid {
+			os.Remove(filename)
+			t.Errorf(errmsg)
+		} else {
+			os.Remove(filename)
 		}
 	}
 

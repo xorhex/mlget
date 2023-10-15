@@ -1,0 +1,60 @@
+test 1:
+  name: TestJoeSandbox
+  hash: e21ff9323365bca4131d8ec0a24b75521857776569316ffe3f7c97f327256d1b
+test 2:
+  name: TestObjectiveSee
+  hash: 458a9ac086116fa011c1a7bd49ac15f386cd95e39eb6b7cd5c5125aef516c78c
+test 3:
+  name: TestCapeSandbox
+  hash: 28eefc36104bebb595fb38cae21a7d0a
+test 4:
+  name: TestInquestLabsLookUp
+  hash: b3f868fa1af24f270e3ecc0ecb79325e
+test 5:
+  name: TestInquestLabsNoLookUp
+  hash: 6b425804d43bb369211bbec59808807730a908804ca9b8c09081139179bbc868
+test 6:
+  name: TestVirusTotal
+  hash: 21cc9c0ae5f97b66d69f1ff99a4fed264551edfe0a5ce8d5449942bf8f0aefb2
+test 7:
+  name: TestMWDB
+  hash: 75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18
+test 8:
+  name: TestPolyswarm
+  hash: 75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18
+test 9:
+  name: TestHybridAnalysis
+  hash: ed2f501408a7a6e1a854c29c4b0bc5648a6aa8612432df829008931b3e34bf56
+test 10:
+  name: TestTriage
+  hash: 75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18
+test 11:
+  name: TestMalShare
+  hash: 75b2831d387a27b3ecfda6be6ff0523de50ec86e6ac3e7a2ce302690570b7d18
+test 12:
+  name: TestMalwareBazaar
+  hash: 001bffcdd170c8328601006ad54a221d1073ba04fbdca556749cf1b041cfad97
+test 13:
+  name: TestMalpedia
+  hash: 78668c237097651d64c97b25fc86c74096bfe1ed53e1004445f118ea5feaa3ad
+test 14:
+  name: TestUnpacme
+  hash: 0219a79a2f47da42601568ee4a41392aa429f62a1fb01080cb68540074449c92
+test 15:
+  name: TestVxShare
+  hash: 1c11c963a417674e1414bac05fdbfa5cfa09f92c7b0d9882aeb55ce2a058d668
+test 16:
+  name: TestFileScanIo
+  hash: 2799af2efd698da215afc9c88da3b1e84b00137433d9444a5c11d69092b3f80d
+test 17:
+  name: TestURLScanIo
+  hash: 5b027ada26a610e97ab4ef9efb1118b377061712acec6db994d6aa1c78a332a8
+test 18:
+  name: TestAnyRun
+  hash: a78dbafaca4813307529cafbed554b53a622a639941f2e66520bbb92769ee960
+test 19:
+  name: TestAssemblyLine
+  hash: 7cbf6cb53214f11904e63bb7493999a3b2e88b62
+test 20:
+  name: TestTriageV2
+  hash: 5eaaf8ac2d358c2d7065884b7994638fee3987f02474e54467f14b010a18d028

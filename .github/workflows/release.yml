@@ -1,7 +1,5 @@
 # .github/workflows/release.yaml
 
-# .github/workflows/release.yaml
-
 on: 
   release:
     types: [created, draft]

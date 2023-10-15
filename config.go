@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -67,6 +66,7 @@ type MalwareRepoType int64
 const (
 	NotSupported MalwareRepoType = iota //NotSupported must always be first, or other things won't work as expected
 
+	AssemblyLine
 	AnyRun
 	CapeSandbox
 	FileScanIo
@@ -161,6 +161,9 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 		case URLScanIO:
 			found, filename = urlscanio(mcr.Host, mcr.Api, hash)
 			checkedRepo = URLScanIO
+		case AssemblyLine:
+			found, filename = assemblyline(mcr.Host, mcr.User, mcr.Api, mcr.IgnoreTLSErrors, hash)
+			checkedRepo = AssemblyLine
 		//case AnyRun:
 		//	found, filename = anyrun(mcr.Host, hash)
 		//	checkedRepo = AnyRun
@@ -169,7 +172,7 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 			checkedRepo = UploadMWDB
 		}
 		// So some repos we can't download from but we want to know that it exists at that service
-		// At the moment, this is just Any.Run but suspecct more will be added as time goes on
+		// At the moment, this is just Any.Run but suspect more will be added as time goes on
 		if checkedRepo == AnyRun && found {
 			continue
 		}
@@ -196,6 +199,10 @@ func (malrepo MalwareRepoType) VerifyRepoParams(repo RepositoryConfigEntry) bool
 		if repo.Host != "" {
 			return true
 		}
+	case AssemblyLine:
+		if repo.Host != "" && repo.Api != "" && repo.User != "" {
+			return true
+		}
 	default:
 		if repo.Host != "" && repo.Api != "" {
 			return true
@@ -207,6 +214,7 @@ func (malrepo MalwareRepoType) VerifyRepoParams(repo RepositoryConfigEntry) bool
 func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 	var host string
 	var api string
+	var user string
 
 	var default_url string
 
@@ -214,7 +222,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 	case NotSupported:
 		return RepositoryConfigEntry{}, fmt.Errorf("malware repository rype, %s, is not supported", malrepo.String())
 	case MalwareBazaar:
-		default_url = "https://mb-api.abuse.ch/api/v1"
+		default_url = "https://mb-api.abuse.ch/api/v1/"
 	case Malshare:
 		default_url = "https://malshare.com"
 	case MWDB:
@@ -259,12 +267,17 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		fmt.Println("Using the default url")
 		host = default_url
 	}
+	if malrepo == AssemblyLine {
+		fmt.Println("Enter User Name:")
+		fmt.Print(">> ")
+		fmt.Scanln(&user)
+	}
 	if malrepo != MalwareBazaar && malrepo != ObjectiveSee && malrepo != AnyRun {
 		fmt.Println("Enter API Key:")
 		fmt.Print(">> ")
 		fmt.Scanln(&api)
 	}
-	return RepositoryConfigEntry{Host: host, Api: api, Type: malrepo.String()}, nil
+	return RepositoryConfigEntry{Host: host, User: user, Api: api, Type: malrepo.String()}, nil
 }
 
 func (malrepo MalwareRepoType) String() string {
@@ -303,6 +316,8 @@ func (malrepo MalwareRepoType) String() string {
 		return "URLScanIO"
 	case AnyRun:
 		return "AnyRun"
+	case AssemblyLine:
+		return "AssemblyLine"
 	case UploadMWDB:
 		return "UploadMWDB"
 
@@ -356,7 +371,8 @@ func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract 
 					} else {
 						valid, calculatedHash := hash.ValidateFile(filename)
 						if !valid {
-							fmt.Printf("    [!] Downloaded file hash %s does not match searched for hash %s\nTrying another source.\n", calculatedHash, hash.Hash)
+							fmt.Printf("    [!] Downloaded file hash %s\n        does not match searched for hash %s\nTrying another source.\n", calculatedHash, hash.Hash)
+							deleteInvalidFile(filename)
 							continue
 						} else {
 							fmt.Printf("    [+] Downloaded file %s validated as the requested hash\n", hash.Hash)
@@ -408,6 +424,8 @@ func getMalwareRepoByFlagName(name string) MalwareRepoType {
 		return URLScanIO
 	case strings.ToLower("ar"):
 		return AnyRun
+	case strings.ToLower("al"):
+		return AssemblyLine
 	}
 	return NotSupported
 }
@@ -448,6 +466,8 @@ func getMalwareRepoByName(name string) MalwareRepoType {
 		return URLScanIO
 	case strings.ToLower("AnyRun"):
 		return AnyRun
+	case strings.ToLower("AssemblyLine"):
+		return AssemblyLine
 	case strings.ToLower("UploadMWDB"):
 		return UploadMWDB
 	}
@@ -465,11 +485,13 @@ func getConfigsByType(repoType MalwareRepoType, repos []RepositoryConfigEntry) [
 }
 
 type RepositoryConfigEntry struct {
-	Type       string `yaml:"type"`
-	Host       string `yaml:"url"`
-	Api        string `yaml:"api"`
-	QueryOrder int    `yaml:"queryorder"`
-	Password   string `yaml:"pwd"`
+	Type            string `yaml:"type"`
+	Host            string `yaml:"url"`
+	Api             string `yaml:"api"`
+	QueryOrder      int    `yaml:"queryorder"`
+	Password        string `yaml:"pwd"`
+	User            string `yaml:"user"`
+	IgnoreTLSErrors bool   `yaml:"ignoretlserrors"`
 }
 
 func LoadConfig(filename string) ([]RepositoryConfigEntry, error) {
@@ -526,7 +548,7 @@ func parseFile(path string) (map[string]RepositoryConfigEntry, error) {
 		return nil, err
 	}
 
-	f, err := ioutil.ReadFile(path)
+	f, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Printf("%v", err)
 		return nil, err

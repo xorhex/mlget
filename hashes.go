@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+var alwaysDeleteInvalidFile = false
+
 type Hashes struct {
 	Hashes []Hash
 }
@@ -146,6 +148,26 @@ func (h Hash) Validate(bytes []byte) (bool, string) {
 	}
 }
 
+func deleteInvalidFile(filename string) {
+	if !alwaysDeleteInvalidFile {
+		var delete_file string
+		fmt.Printf("    [?] Delete invalid file? [A/Y/n] Always delete/Yes, this time/No, not this time\n")
+		fmt.Scanln(&delete_file)
+		if strings.ToUpper(delete_file) == "Y" || delete_file == "" || strings.ToUpper(delete_file) == "A" {
+			os.Remove(filename)
+			fmt.Printf("    [!] Deleted invalid file\n")
+			if strings.ToUpper(delete_file) == "A" {
+				alwaysDeleteInvalidFile = true
+			}
+		} else {
+			fmt.Printf("    [!] Keeping invalid file\n")
+		}
+	} else {
+		os.Remove(filename)
+		fmt.Printf("    [!] Deleted invalid file\n")
+	}
+}
+
 func hashType(hash string) (HashTypeOption, error) {
 	match, _ := regexp.MatchString("^[A-Fa-f0-9]{64}$", hash)
 	if match {
@@ -160,4 +182,30 @@ func hashType(hash string) (HashTypeOption, error) {
 		return md5, nil
 	}
 	return NotAValidHashType, errors.New("not a valid hash")
+}
+
+func extractHashes(text string) ([]string, error) {
+	hashes := make([]string, 0)
+
+	re := regexp.MustCompile(`>\s*[A-Fa-f0-9]{64}\s*<`)
+	matches := re.FindAllStringSubmatch(text, 100)
+	for m := range matches {
+		hashes = append(hashes, strings.TrimSpace(matches[m][0][1:len(matches[m][0])-1]))
+	}
+	re = regexp.MustCompile(`>\s*[A-Fa-f0-9]{40}\s*<`)
+	matches = re.FindAllStringSubmatch(text, 100)
+	for m := range matches {
+		hashes = append(hashes, strings.TrimSpace(matches[m][0][1:len(matches[m][0])-1]))
+	}
+	re = regexp.MustCompile(`>\s*[A-Fa-f0-9]{32}\s*<`)
+	matches = re.FindAllStringSubmatch(text, 100)
+	for m := range matches {
+		hashes = append(hashes, strings.TrimSpace(matches[m][0][1:len(matches[m][0])-1]))
+	}
+
+	if len(hashes) > 0 {
+		return hashes, fmt.Errorf("no hashes found")
+	}
+
+	return hashes, nil
 }
