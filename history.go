@@ -138,6 +138,40 @@ func parseFileForHashEntries(filename string) ([]Hash, error) {
 			pHash, err = parseFileHashEntry(hash, tags, comments)
 			if err == nil {
 				hashes = append(hashes, pHash)
+			} else {
+				// Try splitting on \t and check to see if any of the values match a hash
+				// This is useful for reading files from the web that list sample hashes
+				// This still assumes there is only one hash per line as it stops after the
+				// first hash is found on that line
+				s := func(c rune) bool {
+					return c == '\t'
+				}
+
+				line := strings.FieldsFunc(strings.TrimSpace(text), s)
+				if len(line) > 0 {
+					for _, element := range line {
+						lHash := Hash{}
+						lHash, err := parseFileHashEntry(strings.TrimSpace(element), tags, comments)
+						if err == nil {
+							hashes = append(hashes, lHash)
+							break
+						} else {
+
+							matches, err := extractHashes(strings.TrimSpace(element))
+							if err != nil {
+								fmt.Println(err)
+							}
+							for m := range matches {
+								tags := []string{}
+								comments := []string{}
+								lHash, err = parseFileHashEntry(matches[m], tags, comments)
+								if err == nil {
+									hashes = append(hashes, lHash)
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -171,7 +205,7 @@ func parseFileHashEntry(hash string, tags []string, comments []string) (Hash, er
 		fmt.Printf("\n Skipping %s because it's %s\n", hash, err)
 		return Hash{}, err
 	}
-	fmt.Printf("Hash found: %s\n", hash) // token in unicode-char
+	fmt.Printf("\nHash found: %s\n", hash) // token in unicode-char
 	hashS := Hash{Hash: hash, HashType: ht}
 	if len(tags) > 0 {
 		hashS.Tags = tags

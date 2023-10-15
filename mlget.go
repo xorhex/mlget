@@ -25,8 +25,11 @@ var tagsFlag []string
 var commentsFlag []string
 var versionFlag bool
 var noValidationFlag bool
+var webserver bool
+var ip string
+var port int
 
-var version string = "3.1.0"
+var version string = "3.2.0"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
@@ -42,7 +45,7 @@ func usage() {
 }
 
 func init() {
-	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - al (AssemblyLine)\n  - cs (Cape Sandbox)\n  - fs (FileScanIo)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tg (Triage)\n  - um (UnpacMe)\n  - us (URLScanIO)\n  - vt (VirusTotal)\n  - vx (VxShare)\nIf omitted, all services will be tried.")
+	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - al (AssemblyLine)\n  - cs (Cape Sandbox)\n  - fs (FileScanIo)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tr (Triage)\n  - um (UnpacMe)\n  - us (URLScanIO)\n  - vt (VirusTotal)\n  - vx (VxShare)\nIf omitted, all services will be tried.")
 	flag.StringVar(&inputFileFlag, "read", "", "Read in a file of hashes (one per line)")
 	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the --read flag)")
 	flag.BoolVar(&helpFlag, "help", false, "Print the help message")
@@ -57,17 +60,15 @@ func init() {
 	flag.BoolVar(&downloadOnlyFlag, "downloadonly", false, "Download from any source, including your personal instance of MWDB.\nWhen this flag is set; it will NOT update any output file with the hashes not found.\nAnd it will not upload to any of the UploadMWDB instances.")
 	flag.BoolVar(&versionFlag, "version", false, "Print the version number")
 	flag.BoolVar(&noValidationFlag, "novalidation", false, "Turn off post download hash check verification")
+	//flag.BoolVar(&webserver, "webserver", false, "Run the webserver to handle request via the web browser.")
+	//flag.StringVar(&ip, "bind", "127.0.0.1", "Bind to IP. Default is localhost")
+	//flag.IntVar(&port, "port", 8080, "Bind to port. Default is 8080")
 }
 
 func main() {
 
 	noSamplesRepoList := []MalwareRepoType{AnyRun}
 	doNotValidatehash := []MalwareRepoType{ObjectiveSee}
-
-	if versionFlag {
-		fmt.Printf("Mlget version: %s\n", version)
-		return
-	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -84,6 +85,11 @@ func main() {
 	}
 
 	flag.Parse()
+
+	if versionFlag {
+		fmt.Printf("Mlget version: %s\n", version)
+		return
+	}
 
 	if helpFlag {
 		usage()
@@ -102,6 +108,36 @@ func main() {
 
 	args := flag.Args()
 
+	if webserver {
+		runWebServer(ip, port)
+	} else {
+		downloadMalwareFromCLI(args, cfg, noSamplesRepoList, doNotValidatehash)
+	}
+
+}
+
+func parseArgHashes(hashes []string, tags []string, comments []string) Hashes {
+	parsedHashes := Hashes{}
+	for _, h := range hashes {
+		ht, err := hashType(h)
+		if err != nil {
+			fmt.Printf("\n Skipping %s because it's %s\n", h, err)
+			continue
+		}
+		fmt.Printf("Hash found: %s\n", h) // token in unicode-char
+		hash := Hash{Hash: h, HashType: ht}
+		if len(tags) > 0 {
+			hash.Tags = tags
+		}
+		if len(comments) > 0 {
+			hash.Comments = comments
+		}
+		parsedHashes, _ = addHash(parsedHashes, hash)
+	}
+	return parsedHashes
+}
+
+func downloadMalwareFromCLI(args []string, cfg []RepositoryConfigEntry, noSamplesRepoList []MalwareRepoType, doNotValidatehash []MalwareRepoType) {
 	if apiFlag != "" {
 		flaggedRepo := getMalwareRepoByFlagName(apiFlag)
 		if flaggedRepo == NotSupported {
@@ -116,6 +152,7 @@ func main() {
 	}
 
 	var osq ObjectiveSeeQuery
+	var err error
 	osConfigs := getConfigsByType(ObjectiveSee, cfg)
 	// Can have multiple Objective-See configs but only the first one to load will be used
 	for _, osc := range osConfigs {
@@ -269,23 +306,6 @@ func main() {
 	}
 }
 
-func parseArgHashes(hashes []string, tags []string, comments []string) Hashes {
-	parsedHashes := Hashes{}
-	for _, h := range hashes {
-		ht, err := hashType(h)
-		if err != nil {
-			fmt.Printf("\n Skipping %s because it's %s\n", h, err)
-			continue
-		}
-		fmt.Printf("Hash found: %s\n", h) // token in unicode-char
-		hash := Hash{Hash: h, HashType: ht}
-		if len(tags) > 0 {
-			hash.Tags = tags
-		}
-		if len(comments) > 0 {
-			hash.Comments = comments
-		}
-		parsedHashes, _ = addHash(parsedHashes, hash)
-	}
-	return parsedHashes
+func downloadMalwareFromWebServer(hashes Hashes) {
+
 }

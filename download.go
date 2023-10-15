@@ -9,12 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/yeka/zip"
 )
@@ -79,7 +79,7 @@ type AssemblyLineQueryItem struct {
 
 type AssemblyLineQueryData struct {
 	Md5    string `json:"md5"`
-	Sha1   string `json:"sha1`
+	Sha1   string `json:"sha1"`
 	Sha256 string `json:"sha256"`
 }
 
@@ -125,7 +125,7 @@ func loadObjectiveSeeJson(uri string) (ObjectiveSeeQuery, error) {
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusOK {
-		byteValue, _ := ioutil.ReadAll(response.Body)
+		byteValue, _ := io.ReadAll(response.Body)
 
 		var data = ObjectiveSeeQuery{}
 		error = json.Unmarshal(byteValue, &data)
@@ -239,7 +239,7 @@ func joesandbox(uri string, api string, hash Hash) (bool, string) {
 
 	if response.StatusCode == http.StatusOK {
 
-		byteValue, error := ioutil.ReadAll(response.Body)
+		byteValue, error := io.ReadAll(response.Body)
 		if error != nil {
 			fmt.Println(error)
 			return false, ""
@@ -392,7 +392,7 @@ func inquestlabs(uri string, api string, hash Hash) (bool, string) {
 
 		if response.StatusCode == http.StatusOK {
 
-			byteValue, _ := ioutil.ReadAll(response.Body)
+			byteValue, _ := io.ReadAll(response.Body)
 
 			var data = InquestLabsQuery{}
 			error = json.Unmarshal(byteValue, &data)
@@ -642,7 +642,7 @@ func hybridAnlysis(uri string, api string, hash Hash, doNotExtract bool) (bool, 
 			fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
 			return false, ""
 		}
-		byteValue, _ := ioutil.ReadAll(response.Body)
+		byteValue, _ := io.ReadAll(response.Body)
 
 		var data = HybridAnalysisQuery{}
 		error = json.Unmarshal(byteValue, &data)
@@ -748,7 +748,7 @@ func triage(uri string, api string, hash Hash) (bool, string) {
 
 	if response.StatusCode == http.StatusOK {
 
-		byteValue, error := ioutil.ReadAll(response.Body)
+		byteValue, error := io.ReadAll(response.Body)
 		if error != nil {
 			fmt.Println(error)
 			return false, ""
@@ -802,8 +802,54 @@ func traigeDownload(uri string, api string, sampleId string, hash Hash) (bool, s
 		fmt.Println(error)
 		return false, ""
 	}
-	fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
-	return true, hash.Hash
+	// Triage will download an archive file that contians the hash in question sometimes versus the actual sample being requested
+	hashMatch, _ := hash.ValidateFile(hash.Hash)
+	if !hashMatch {
+		files, err := extractPwdZip(hash.Hash, "", false, hash)
+		if err != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		found := false
+
+		fmt.Printf("      [-] The downloaded file appears to be a zip file in which the requested file should be located.\n")
+		for _, f := range files {
+			fmt.Printf("        [-] Checking file: %s\n", f.Name)
+			hashMatch, _ = hash.ValidateFile(f.Name)
+			if !hashMatch {
+				err = os.Remove(f.Name)
+				if err != nil {
+					fmt.Println("        [!] Error when deleting file: ", f.Name)
+					fmt.Println(err)
+				}
+			} else {
+				fmt.Printf("        [+] %s is hash %s\n", f.Name, hash.Hash)
+				err = os.Rename(f.Name, hash.Hash)
+				if err != nil {
+					fmt.Println("        [!] Error when renaming file: ", f.Name)
+					fmt.Println(err)
+				} else {
+					found = true
+				}
+			}
+		}
+		if !found {
+			fmt.Printf("        [!] Hash %s not found\n", hash.Hash)
+			err = os.Remove(hash.Hash)
+			if err != nil {
+				fmt.Println("        [!] Error when deleting file: ", hash.Hash)
+				fmt.Println(err)
+			}
+			return false, ""
+		} else {
+			fmt.Printf("      [+] Found %s\n", hash.Hash)
+			return true, hash.Hash
+		}
+	} else {
+		fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
+		return true, hash.Hash
+	}
 }
 
 func malshare(url string, api string, hash Hash) (bool, string) {
@@ -873,7 +919,7 @@ func malwareBazaar(uri string, hash Hash, doNotExtract bool, password string) (b
 			return false, ""
 		}
 
-		byteValue, _ := ioutil.ReadAll(response.Body)
+		byteValue, _ := io.ReadAll(response.Body)
 
 		var data = MalwareBazarQuery{}
 		error = json.Unmarshal(byteValue, &data)
@@ -900,28 +946,39 @@ func malwareBazaar(uri string, hash Hash, doNotExtract bool, password string) (b
 
 func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool, password string) (bool, string) {
 	query := "query=get_file&sha256_hash=" + hash.Hash
-	values, error := url.ParseQuery(query)
-	if error != nil {
-		fmt.Println(error)
+	values, err := url.ParseQuery(query)
+	if err != nil {
+		fmt.Println(err)
 		return false, ""
 	}
 
 	client := &http.Client{}
-	response, error := client.PostForm(uri, values)
-	if error != nil {
-		fmt.Println(error)
+
+	response, err := client.PostForm(uri, values)
+	if err != nil {
+		fmt.Println(err)
 		return false, ""
 	}
 
 	defer response.Body.Close()
 
 	if response.Header["Content-Type"][0] == "application/json" {
+		if response.StatusCode == http.StatusMethodNotAllowed {
+			if !strings.HasSuffix(uri, "/") {
+				fmt.Printf("    [!] Trying again with a trailing slash: %s/\n", uri)
+				return malwareBazaarDownload(uri+"/", hash, doNotExtract, password)
+			} else {
+				fmt.Printf("    [!] Normally the response code: %s means that the provided URL %s needs a trailing slash (to avoid the redirect), but this already has a trailing slash.\nPlease file a bug report at https://github.com/xorhex/mlget/issues\n", response.Status, uri)
+			}
+		} else {
+			fmt.Printf("    [!] %s\n", response.Status)
+		}
 		return false, ""
 	}
 
-	error = writeToFile(response.Body, hash.Hash+".zip")
-	if error != nil {
-		fmt.Println(error)
+	err = writeToFile(response.Body, hash.Hash+".zip")
+	if err != nil {
+		fmt.Println(err)
 		return false, ""
 	}
 
@@ -930,7 +987,7 @@ func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool, password st
 		return true, hash.Hash + ".zip"
 	} else {
 		fmt.Println("    [-] Extracting...")
-		files, err := extractPwdZip(hash.Hash, password)
+		files, err := extractPwdZip(hash.Hash+".zip", password, true, hash)
 		if err != nil {
 			fmt.Println(err)
 			return false, ""
@@ -984,6 +1041,8 @@ func filescaniodownload(uri string, api string, hash Hash, doNotExtract bool, pa
 		return false, ""
 	} else if response.StatusCode == http.StatusForbidden {
 		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
+		fmt.Printf("    [!] If you are sure this is correct, then test downloading a sample you've access to in their platform. It should work.\n")
+		fmt.Printf("    [!] Not sure why it does not just return a 404 instead; when the creds are correct but the file is not available.\n")
 		return false, ""
 	}
 
@@ -998,7 +1057,7 @@ func filescaniodownload(uri string, api string, hash Hash, doNotExtract bool, pa
 		return true, hash.Hash + ".zip"
 	} else {
 		fmt.Println("    [-] Extracting...")
-		files, err := extractPwdZip(hash.Hash, password)
+		files, err := extractPwdZip(hash.Hash+".zip", password, true, hash)
 		if err != nil {
 			fmt.Println(err)
 			return false, ""
@@ -1058,7 +1117,7 @@ func vxsharedownload(uri string, api string, hash Hash, doNotExtract bool, passw
 		return true, hash.Hash + ".zip"
 	} else {
 		fmt.Println("    [-] Extracting...")
-		files, err := extractPwdZip(hash.Hash, password)
+		files, err := extractPwdZip(hash.Hash+".zip", password, true, hash)
 		if err != nil {
 			fmt.Println(err)
 			return false, ""
@@ -1253,7 +1312,7 @@ func malpediaDownload(uri string, api string, hash Hash) (bool, string) {
 		return false, ""
 	}
 
-	byteValue, _ := ioutil.ReadAll(response.Body)
+	byteValue, _ := io.ReadAll(response.Body)
 	jsonParseSuccesful, mpData := parseMalpediaJson(byteValue)
 	if jsonParseSuccesful {
 		for _, item := range mpData {
@@ -1342,7 +1401,7 @@ func assemblyline(uri string, user string, api string, ignoretlserrors bool, has
 			return false, ""
 		}
 
-		byteValue, _ := ioutil.ReadAll(response.Body)
+		byteValue, _ := io.ReadAll(response.Body)
 
 		var data = AssemblyLineQuery{}
 		error = json.Unmarshal(byteValue, &data)
@@ -1424,9 +1483,9 @@ func extractGzip(hash string) error {
 	return err
 }
 
-func extractPwdZip(hash string, password string) ([]*zip.File, error) {
+func extractPwdZip(file string, password string, renameFileAsHash bool, hash Hash) ([]*zip.File, error) {
 
-	r, err := zip.OpenReader(hash + ".zip")
+	r, err := zip.OpenReader(file)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1444,7 +1503,15 @@ func extractPwdZip(hash string, password string) ([]*zip.File, error) {
 			log.Fatal(err)
 		}
 
-		out, error := os.Create(hash)
+		var name string
+
+		if !renameFileAsHash {
+			name = f.Name
+		} else {
+			name = hash.Hash
+		}
+
+		out, error := os.Create(name)
 		if error != nil {
 			return nil, error
 		}

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -173,7 +172,7 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 			checkedRepo = UploadMWDB
 		}
 		// So some repos we can't download from but we want to know that it exists at that service
-		// At the moment, this is just Any.Run but suspecct more will be added as time goes on
+		// At the moment, this is just Any.Run but suspect more will be added as time goes on
 		if checkedRepo == AnyRun && found {
 			continue
 		}
@@ -223,7 +222,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 	case NotSupported:
 		return RepositoryConfigEntry{}, fmt.Errorf("malware repository rype, %s, is not supported", malrepo.String())
 	case MalwareBazaar:
-		default_url = "https://mb-api.abuse.ch/api/v1"
+		default_url = "https://mb-api.abuse.ch/api/v1/"
 	case Malshare:
 		default_url = "https://malshare.com"
 	case MWDB:
@@ -549,7 +548,7 @@ func parseFile(path string) (map[string]RepositoryConfigEntry, error) {
 		return nil, err
 	}
 
-	f, err := ioutil.ReadFile(path)
+	f, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Printf("%v", err)
 		return nil, err

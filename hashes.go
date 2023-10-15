@@ -183,3 +183,29 @@ func hashType(hash string) (HashTypeOption, error) {
 	}
 	return NotAValidHashType, errors.New("not a valid hash")
 }
+
+func extractHashes(text string) ([]string, error) {
+	hashes := make([]string, 0)
+
+	re := regexp.MustCompile(`>\s*[A-Fa-f0-9]{64}\s*<`)
+	matches := re.FindAllStringSubmatch(text, 100)
+	for m := range matches {
+		hashes = append(hashes, strings.TrimSpace(matches[m][0][1:len(matches[m][0])-1]))
+	}
+	re = regexp.MustCompile(`>\s*[A-Fa-f0-9]{40}\s*<`)
+	matches = re.FindAllStringSubmatch(text, 100)
+	for m := range matches {
+		hashes = append(hashes, strings.TrimSpace(matches[m][0][1:len(matches[m][0])-1]))
+	}
+	re = regexp.MustCompile(`>\s*[A-Fa-f0-9]{32}\s*<`)
+	matches = re.FindAllStringSubmatch(text, 100)
+	for m := range matches {
+		hashes = append(hashes, strings.TrimSpace(matches[m][0][1:len(matches[m][0])-1]))
+	}
+
+	if len(hashes) > 0 {
+		return hashes, fmt.Errorf("no hashes found")
+	}
+
+	return hashes, nil
+}
