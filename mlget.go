@@ -29,7 +29,7 @@ var webserver bool
 var ip string
 var port int
 
-var version string = "3.2.0"
+var version string = "3.2.1"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
