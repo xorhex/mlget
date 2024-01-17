@@ -18,10 +18,12 @@ type Hashes struct {
 }
 
 type Hash struct {
-	Hash     string
-	HashType HashTypeOption
-	Tags     []string
-	Comments []string
+	Hash      string
+	HashType  HashTypeOption
+	Tags      []string
+	Comments  []string
+	Local     bool   // True if found locally on the filesystem (used with the -precheckdir flag).  Default False
+	LocalFile string // Full file name if file found on local system (used with the -precheckdir flag)
 }
 
 type HashTypeOption int64
@@ -63,6 +65,15 @@ func addHash(hashes Hashes, hash Hash) (Hashes, error) {
 	return hashes, nil
 }
 
+func (hs Hashes) updateLocalFile(hash string, filename string) {
+	for idx, h := range hs.Hashes {
+		if h.Hash == hash {
+			hs.Hashes[idx].Local = true
+			hs.Hashes[idx].LocalFile = filename
+		}
+	}
+}
+
 func (hs Hashes) hashExists(hash string) bool {
 	for _, h := range hs.Hashes {
 		if h.Hash == hash {
@@ -73,9 +84,9 @@ func (hs Hashes) hashExists(hash string) bool {
 }
 
 func (hs Hashes) getByHash(hash string) (Hash, error) {
-	for _, h := range hs.Hashes {
+	for idx, h := range hs.Hashes {
 		if h.Hash == hash {
-			return h, nil
+			return hs.Hashes[idx], nil
 		}
 	}
 	return Hash{}, fmt.Errorf("Hash not found")

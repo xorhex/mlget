@@ -82,6 +82,8 @@ func parseFileForHashEntries(filename string) ([]Hash, error) {
 	var _filename string
 	var err error
 
+	fmt.Printf("Hashes Found in File:\n")
+
 	if isValidUrl(filename) {
 		_filename, err = downloadFromUrl(filename)
 		if err != nil {
@@ -180,6 +182,8 @@ func parseFileForHashEntries(filename string) ([]Hash, error) {
 		os.Remove(_filename)
 	}
 
+	fmt.Println("")
+
 	return hashes, nil
 }
 
@@ -205,7 +209,7 @@ func parseFileHashEntry(hash string, tags []string, comments []string) (Hash, er
 		fmt.Printf("\n Skipping %s because it's %s\n", hash, err)
 		return Hash{}, err
 	}
-	fmt.Printf("\nHash found: %s\n", hash) // token in unicode-char
+	fmt.Printf("  - %s\n", hash) // token in unicode-char
 	hashS := Hash{Hash: hash, HashType: ht}
 	if len(tags) > 0 {
 		hashS.Tags = tags

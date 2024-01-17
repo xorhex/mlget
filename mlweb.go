@@ -26,8 +26,8 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func processMalwareDownloadRequest(values []string, tags []string, comments []string) {
-	hashes := parseArgHashes(values, tags, comments)
-	downloadMalwareFromWebServer(hashes)
+	//hashes := parseArgHashes(values, tags, comments)
+	//downloadMalwareFromWebServer(hashes)
 }
 
 func runWebServer(bind string, port int) {

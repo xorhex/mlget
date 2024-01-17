@@ -1,6 +1,6 @@
 test 1:
   name: TestJoeSandbox
-  hash: e21ff9323365bca4131d8ec0a24b75521857776569316ffe3f7c97f327256d1b
+  hash: 40541a03e910b21df681bec69cfe59678ebba86c
 test 2:
   name: TestObjectiveSee
   hash: 458a9ac086116fa011c1a7bd49ac15f386cd95e39eb6b7cd5c5125aef516c78c
@@ -49,9 +49,6 @@ test 16:
 test 17:
   name: TestURLScanIo
   hash: 5b027ada26a610e97ab4ef9efb1118b377061712acec6db994d6aa1c78a332a8
-test 18:
-  name: TestAnyRun
-  hash: a78dbafaca4813307529cafbed554b53a622a639941f2e66520bbb92769ee960
 test 19:
   name: TestAssemblyLine
   hash: 7cbf6cb53214f11904e63bb7493999a3b2e88b62

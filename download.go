@@ -1182,46 +1182,6 @@ func unpacmeDownload(uri string, api string, hash Hash) (bool, string) {
 	return true, hash.Hash
 }
 
-func anyrun(uri string, hash Hash) (bool, string) {
-	if uri == "" {
-		fmt.Println("    [!] !! Missing URI !!")
-		return false, ""
-	}
-
-	if hash.HashType != sha256 {
-		fmt.Printf("    [!] AnyRun only supports SHA256\n        Skipping\n")
-		return false, ""
-	}
-
-	return anyrunCheck(uri, hash)
-
-}
-
-func anyrunCheck(uri string, hash Hash) (bool, string) {
-	request, error := http.NewRequest("GET", uri+"/"+url.PathEscape(hash.Hash), nil)
-	if error != nil {
-		fmt.Println(error)
-		return false, ""
-	}
-
-	client := &http.Client{}
-	response, error := client.Do(request)
-	if error != nil {
-		fmt.Println(error)
-		return false, ""
-	}
-
-	defer response.Body.Close()
-
-	if response.StatusCode == 200 {
-		fmt.Println("    [$] Sample available on Any.Run at " + request.URL.String())
-		return true, ""
-	} else {
-		return false, ""
-
-	}
-}
-
 func urlscanio(uri string, api string, hash Hash) (bool, string) {
 	if api == "" {
 		fmt.Println("    [!] !! Missing Key !!")

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,45 +14,141 @@ import (
 	"strings"
 )
 
+func doesSampleExistInAssemblyLine(uri string, api string, user string, hash Hash, ignoreTLSErrors bool) bool {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false
+	}
+	if user == "" {
+		fmt.Println("    [!] !! Missing User !!")
+		return false
+	}
+
+	request, error := http.NewRequest("GET", uri+"/hash_search/"+url.PathEscape(hash.Hash)+"/", nil)
+	if error != nil {
+		fmt.Println(error)
+		return false
+	}
+
+	request.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	request.Header.Set("x-user", user)
+	request.Header.Set("x-apikey", api)
+
+	tr := &http.Transport{}
+	if ignoreTLSErrors {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	client := &http.Client{Transport: tr}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Printf("      [!] Error with querying AssemblyLine for hash : %s\n", error)
+		return false
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusUnauthorized {
+		fmt.Printf("      [!] Not authorized.  Check the URL, User, and APIKey in the config.\n")
+		return false
+	}
+
+	byteValue, _ := io.ReadAll(response.Body)
+
+	var data = AssemblyLineQuery{}
+	error = json.Unmarshal(byteValue, &data)
+
+	if error != nil {
+		fmt.Println(error)
+		return false
+	}
+
+	if data.Response.AL == nil {
+		return false
+	}
+
+	if len(data.Response.AL.Items) > 0 {
+		return true
+	}
+	return false
+}
+
+func UploadSampleToAssemblyLine(repos []RepositoryConfigEntry, filename string, hash Hash, deleteFromDisk bool, forceResubmission bool) error {
+	matchingConfigRepos := getConfigsByType(UploadAssemblyLine, repos)
+	if len(matchingConfigRepos) == 0 {
+		return fmt.Errorf("      upload to assemblyline config entry not found")
+	}
+	for _, mcr := range matchingConfigRepos {
+		if !forceResubmission && doesSampleExistInAssemblyLine(mcr.Host, mcr.Api, mcr.User, hash, mcr.IgnoreTLSErrors) {
+			fmt.Println("      Sample Already Exist in AssemblyLine. Not Reuploading.")
+			continue
+		}
+
+		bodyBuf := &bytes.Buffer{}
+		bodyWriter := multipart.NewWriter(bodyBuf)
+
+		// this step is very important
+		fileWriter, err := bodyWriter.CreateFormFile("bin", filename)
+		if err != nil {
+			return fmt.Errorf("error writing to buffer")
+		}
+
+		// open file handle
+		fh, err := os.Open(filename)
+		if err != nil {
+			return fmt.Errorf("error opening file")
+		}
+		defer fh.Close()
+
+		//iocopy
+		_, err = io.Copy(fileWriter, fh)
+		if err != nil {
+			return err
+		}
+
+		contentType := bodyWriter.FormDataContentType()
+		bodyWriter.Close()
+
+		request, error := http.NewRequest("POST", mcr.Host+"/submit/", bodyBuf)
+		if error != nil {
+			return error
+		}
+
+		request.Header.Set("accept", "application/json")
+		request.Header.Set("x-user", mcr.User)
+		request.Header.Set("x-apikey", mcr.Api)
+		request.Header.Set("Content-Type", contentType)
+
+		tr := &http.Transport{}
+		if mcr.IgnoreTLSErrors {
+			tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		}
+		client := &http.Client{Transport: tr}
+		resp, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("error uploading file - status code %d returned", resp.StatusCode)
+
+		} else {
+			fmt.Printf("      %s uploaded to AssemblyLine (%s)\n", filename, mcr.Host)
+			if deleteFromDisk {
+				os.Remove(filename)
+				fmt.Printf("      %s deleted from disk\n", filename)
+			}
+		}
+	}
+	return nil
+}
+
 type CommentItemResponse struct {
 	Author    string `json:"author"`
 	Comment   string `json:"comment"`
 	Id        int32  `json:"id"`
 	Timestamp string `json:"timestamp"`
-}
-
-func SyncSampleAcrossUploadMWDBsIfExists(repos []RepositoryConfigEntry, hash Hash) bool {
-	matchingConfigRepos := getConfigsByType(UploadMWDB, repos)
-	synced := false
-	for _, mcr := range matchingConfigRepos {
-		if !doesSampleExistInMWDB(mcr.Host, mcr.Api, hash.Hash) {
-			// If sample not found then skip the rest of this loop and check to see if the next UploadMWDB instance has the sample
-			continue
-		}
-		// A sample was found, now download and upload to the remaining instances
-		if len(matchingConfigRepos) > 1 {
-			var osq ObjectiveSeeQuery
-			downloaded, filename, _ := UploadMWDB.QueryAndDownload(matchingConfigRepos, hash, false, osq)
-			if downloaded {
-				UploadSampleToMWDBs(matchingConfigRepos, filename, hash, true)
-			}
-		}
-
-		if len(hash.Tags) == 0 && len(hash.Comments) == 0 {
-			fmt.Printf("  [!] Skipping %s\n", hash.Hash)
-		} else {
-			if len(hash.Tags) > 0 {
-				// Add Tags
-				AddTagsToSamplesAcrossMWDBs(matchingConfigRepos, hash)
-			}
-			if len(hash.Comments) > 0 {
-				// Add Comments
-				AddCommentsToSamplesAcrossMWDBs(matchingConfigRepos, hash)
-			}
-		}
-		synced = true
-	}
-	return synced
 }
 
 func doesSampleExistInMWDB(uri string, api string, hash string) bool {

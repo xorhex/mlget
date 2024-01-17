@@ -658,31 +658,3 @@ func TestAssemblyLine(t *testing.T) {
 	}
 
 }
-
-/*
-func TestAnyRun(t *testing.T) {
-	home, _ := os.UserHomeDir()
-	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
-	if err != nil {
-		log.Fatal()
-		t.Errorf("%v", err)
-	}
-
-	scfg, err := parseTestConfig("./mlget-test-config/samples.yaml", t.Name())
-	if err != nil {
-		log.Fatal()
-		t.Errorf("%v", err)
-	}
-
-	ht, _ := hashType(scfg.Hash)
-	hash := Hash{HashType: ht, Hash: scfg.Hash}
-
-	var osq ObjectiveSeeQuery
-	result, _, _ := AnyRun.QueryAndDownload(cfg, hash, false, osq)
-
-	if !result {
-		t.Errorf("AnyRun failed")
-	}
-
-}
-*/

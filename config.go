@@ -1,65 +1,16 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"path"
-	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/exp/slices"
 	"gopkg.in/yaml.v2"
 )
-
-type OldConfig struct {
-	MalShare struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"malshare"`
-	MalwareBazar struct {
-		Host string `yaml:"host"`
-	} `yaml:"malwarebazar"`
-	MWDB struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"mwdb"`
-	VT struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"virustotal"`
-	Triage struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"triage"`
-	HybridAnalysis struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"hybridanalysis"`
-	PolySwarm struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"polyswarm"`
-	CapeSandbox struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"capesandbox"`
-	JoeSandbox struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"joesandbox"`
-	InquestLabs struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"inquestlabs"`
-	UploadToMWDBOption struct {
-		ApiKey string `yaml:"api"`
-		Host   string `yaml:"host"`
-	} `yaml:"uploadtomwdb"`
-}
 
 type MalwareRepoType int64
 
@@ -67,7 +18,6 @@ const (
 	NotSupported MalwareRepoType = iota //NotSupported must always be first, or other things won't work as expected
 
 	AssemblyLine
-	AnyRun
 	CapeSandbox
 	FileScanIo
 	HybridAnalysis
@@ -85,6 +35,7 @@ const (
 	VirusTotal
 	VxShare
 
+	UploadAssemblyLine
 	//UploadMWDB must always be last, or other things won't work as expected
 	UploadMWDB
 )
@@ -164,18 +115,15 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 		case AssemblyLine:
 			found, filename = assemblyline(mcr.Host, mcr.User, mcr.Api, mcr.IgnoreTLSErrors, hash)
 			checkedRepo = AssemblyLine
-		//case AnyRun:
-		//	found, filename = anyrun(mcr.Host, hash)
-		//	checkedRepo = AnyRun
+		case UploadAssemblyLine:
+			found, filename = assemblyline(mcr.Host, mcr.User, mcr.Api, mcr.IgnoreTLSErrors, hash)
+			checkedRepo = UploadAssemblyLine
 		case UploadMWDB:
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
 			checkedRepo = UploadMWDB
 		}
 		// So some repos we can't download from but we want to know that it exists at that service
 		// At the moment, this is just Any.Run but suspect more will be added as time goes on
-		if checkedRepo == AnyRun && found {
-			continue
-		}
 		if found {
 			return found, filename, checkedRepo
 		}
@@ -195,11 +143,11 @@ func (malrepo MalwareRepoType) VerifyRepoParams(repo RepositoryConfigEntry) bool
 		if repo.Host != "" {
 			return true
 		}
-	case AnyRun:
-		if repo.Host != "" {
+	case AssemblyLine:
+		if repo.Host != "" && repo.Api != "" && repo.User != "" {
 			return true
 		}
-	case AssemblyLine:
+	case UploadAssemblyLine:
 		if repo.Host != "" && repo.Api != "" && repo.User != "" {
 			return true
 		}
@@ -215,6 +163,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 	var host string
 	var api string
 	var user string
+	tls := false
 
 	var default_url string
 
@@ -253,8 +202,6 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		default_url = "https://www.filescan.io/api"
 	case URLScanIO:
 		default_url = "https://urlscan.io/downloads"
-	case AnyRun:
-		default_url = "https://any.run/report"
 	}
 	if default_url != "" {
 		fmt.Printf("Enter Host [ Press enter for default - %s ]:\n", default_url)
@@ -267,17 +214,29 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		fmt.Println("Using the default url")
 		host = default_url
 	}
-	if malrepo == AssemblyLine {
+	if malrepo == AssemblyLine || malrepo == UploadAssemblyLine {
 		fmt.Println("Enter User Name:")
 		fmt.Print(">> ")
 		fmt.Scanln(&user)
+		for {
+			fmt.Println("Disable TLS Verification (true|false):")
+			fmt.Print(">> ")
+			var tlss string
+			fmt.Scanln(&tlss)
+			boolvalue, err := strconv.ParseBool(tlss)
+			if err == nil {
+				tls = boolvalue
+				break
+			}
+			fmt.Println("Invalid option entered")
+		}
 	}
-	if malrepo != MalwareBazaar && malrepo != ObjectiveSee && malrepo != AnyRun {
+	if malrepo != MalwareBazaar && malrepo != ObjectiveSee {
 		fmt.Println("Enter API Key:")
 		fmt.Print(">> ")
 		fmt.Scanln(&api)
 	}
-	return RepositoryConfigEntry{Host: host, User: user, Api: api, Type: malrepo.String()}, nil
+	return RepositoryConfigEntry{Host: host, User: user, Api: api, Type: malrepo.String(), IgnoreTLSErrors: tls}, nil
 }
 
 func (malrepo MalwareRepoType) String() string {
@@ -314,10 +273,10 @@ func (malrepo MalwareRepoType) String() string {
 		return "FileScanIo"
 	case URLScanIO:
 		return "URLScanIO"
-	case AnyRun:
-		return "AnyRun"
 	case AssemblyLine:
 		return "AssemblyLine"
+	case UploadAssemblyLine:
+		return "UploadAssemblyLine"
 	case UploadMWDB:
 		return "UploadMWDB"
 
@@ -338,7 +297,7 @@ func printAllowedMalwareRepoTypeOptions() {
 	}
 }
 
-func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, skipUploadMWDBEntries bool, osq ObjectiveSeeQuery, doNotValidateHash bool, noSamplesRepoList []MalwareRepoType, doNotValidateHashList []MalwareRepoType) (bool, string, MalwareRepoType) {
+func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract bool, skipUpload bool, osq ObjectiveSeeQuery, doNotValidateHash bool, doNotValidateHashList []MalwareRepoType) (bool, string, MalwareRepoType) {
 	found := false
 	filename := ""
 	checkedRepo := NotSupported
@@ -353,13 +312,13 @@ func queryAndDownloadAll(repos []RepositoryConfigEntry, hash Hash, doNotExtract 
 	var completedTypes []MalwareRepoType
 
 	for _, repo := range repos {
-		if repo.Type == UploadMWDB.String() && skipUploadMWDBEntries {
+		if (repo.Type == UploadMWDB.String() || repo.Type == UploadAssemblyLine.String()) && skipUpload {
 			continue
 		}
 		mr := getMalwareRepoByName(repo.Type)
 		if !contains(completedTypes, mr) {
 			found, filename, checkedRepo = mr.QueryAndDownload(repos, hash, doNotExtract, osq)
-			if found && !slices.Contains(noSamplesRepoList, checkedRepo) {
+			if found {
 				if !doNotValidateHash {
 					if slices.Contains(doNotValidateHashList, checkedRepo) {
 						if checkedRepo == ObjectiveSee {
@@ -422,8 +381,6 @@ func getMalwareRepoByFlagName(name string) MalwareRepoType {
 		return FileScanIo
 	case strings.ToLower("us"):
 		return URLScanIO
-	case strings.ToLower("ar"):
-		return AnyRun
 	case strings.ToLower("al"):
 		return AssemblyLine
 	}
@@ -464,10 +421,10 @@ func getMalwareRepoByName(name string) MalwareRepoType {
 		return FileScanIo
 	case strings.ToLower("URLScanIO"):
 		return URLScanIO
-	case strings.ToLower("AnyRun"):
-		return AnyRun
 	case strings.ToLower("AssemblyLine"):
 		return AssemblyLine
+	case strings.ToLower("UploadAssemblyLine"):
+		return UploadAssemblyLine
 	case strings.ToLower("UploadMWDB"):
 		return UploadMWDB
 	}
@@ -518,8 +475,6 @@ func LoadConfig(filename string) ([]RepositoryConfigEntry, error) {
 func verifyConfig(repos map[string]RepositoryConfigEntry) ([]RepositoryConfigEntry, error) {
 	var verifiedConfigRepos []RepositoryConfigEntry
 
-	uploadToMWDBCount := 0
-
 	for k, v := range repos {
 		mr := getMalwareRepoByName(v.Type)
 		if mr == NotSupported {
@@ -527,9 +482,6 @@ func verifyConfig(repos map[string]RepositoryConfigEntry) ([]RepositoryConfigEnt
 			allowedMalwareRepoTypes()
 			fmt.Println("")
 		} else {
-			if v.Type == UploadMWDB.String() {
-				uploadToMWDBCount++
-			}
 			valid := mr.VerifyRepoParams(v)
 			if !valid {
 				fmt.Printf("  Skipping %s (Type: %s, URL: %s, API: %s) as it's missing a parameter.\n", k, v.Type, v.Host, v.Api)
@@ -560,40 +512,6 @@ func parseFile(path string) (map[string]RepositoryConfigEntry, error) {
 	if err != nil {
 		fmt.Printf("%v", err)
 		return nil, err
-	}
-
-	//Count number of entries where the type is not set
-	nullTypeSetCount := 0
-	for _, v := range data {
-		if v.Type == "" {
-			nullTypeSetCount++
-		}
-	}
-	if nullTypeSetCount == len(data) {
-		var cfg OldConfig
-		parseV1File(path, &cfg)
-
-		if cfg.CapeSandbox.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.HybridAnalysis.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.InquestLabs.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.MWDB.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.MalShare.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.Triage.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.PolySwarm.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.VT.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.JoeSandbox.ApiKey != "" {
-			return migrateConfig(path, cfg)
-		} else if cfg.MalwareBazar.Host != "" {
-			return migrateConfig(path, cfg)
-		}
 	}
 
 	return data, nil
@@ -700,158 +618,6 @@ func writeConfigToFile(filename string, repoConfigEntries map[string]RepositoryC
 	}
 
 	return file.Name(), nil
-}
-
-func migrateConfig(filename string, cfg OldConfig) (map[string]RepositoryConfigEntry, error) {
-	configEntryIndex := 0
-	newRepositoryEntries := make(map[string]RepositoryConfigEntry)
-
-	fmt.Println("Migrate config file (backup file will be created first)[Y|n]?")
-	var response string
-	fmt.Scanln(&response)
-
-	if response == "" || strings.ToLower(response) == "y" {
-
-		if cfg.CapeSandbox.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.CapeSandbox.Host, Api: cfg.CapeSandbox.ApiKey, Type: CapeSandbox.String(), QueryOrder: 2}
-			configEntryIndex++
-		}
-		if cfg.HybridAnalysis.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.HybridAnalysis.Host, Api: cfg.HybridAnalysis.ApiKey, Type: HybridAnalysis.String(), QueryOrder: 4}
-			configEntryIndex++
-		}
-		if cfg.InquestLabs.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.InquestLabs.Host, Api: cfg.InquestLabs.ApiKey, Type: InQuest.String(), QueryOrder: 6}
-			configEntryIndex++
-		}
-		if cfg.MWDB.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.MWDB.Host, Api: cfg.MWDB.ApiKey, Type: MWDB.String(), QueryOrder: 3}
-			configEntryIndex++
-		}
-		if cfg.MalShare.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.MalShare.Host, Api: cfg.MalShare.ApiKey, Type: Malshare.String(), QueryOrder: 5}
-			configEntryIndex++
-		}
-		if cfg.Triage.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.Triage.Host, Api: cfg.Triage.ApiKey, Type: Triage.String(), QueryOrder: 7}
-			configEntryIndex++
-		}
-		if cfg.PolySwarm.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.PolySwarm.Host, Api: cfg.PolySwarm.ApiKey, Type: Polyswarm.String(), QueryOrder: 10}
-			configEntryIndex++
-		}
-		if cfg.VT.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.VT.Host, Api: cfg.VT.ApiKey, Type: VirusTotal.String(), QueryOrder: 9}
-			configEntryIndex++
-		}
-		if cfg.JoeSandbox.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.JoeSandbox.Host, Api: cfg.JoeSandbox.ApiKey, Type: JoeSandbox.String(), QueryOrder: 8}
-			configEntryIndex++
-		}
-		if cfg.UploadToMWDBOption.ApiKey != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.UploadToMWDBOption.Host, Api: cfg.UploadToMWDBOption.ApiKey, Type: UploadMWDB.String()}
-			configEntryIndex++
-		}
-		if cfg.MalwareBazar.Host != "" {
-			newRepositoryEntries["repository "+fmt.Sprint(configEntryIndex)] = RepositoryConfigEntry{Host: cfg.MalwareBazar.Host, Type: MalwareBazaar.String(), QueryOrder: 1}
-			configEntryIndex++
-		}
-
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Println(err)
-			return nil, err
-		}
-
-		backupFileName := path.Join(homeDir, ".mlget-bak.yml")
-		fmt.Printf("Creating a backup file %s\n", backupFileName)
-		err = copyFile(filename, backupFileName)
-		if err != nil {
-			fmt.Println("Failed creating backup file, aborting!")
-			return nil, fmt.Errorf("failed creating backup file (%s) : %v", backupFileName, err)
-		}
-		_, err = writeConfigToFile(filename, newRepositoryEntries)
-		if err != nil {
-			fmt.Println("Failed creating new config file, aborting!")
-			return nil, fmt.Errorf("failed creating new config file : %v", err)
-		}
-	} else {
-		return nil, fmt.Errorf("must update %s to latest configuration before contining", filename)
-	}
-	return newRepositoryEntries, nil
-}
-
-func copyFile(in string, out string) error {
-	fin, err := os.Open(in)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	defer fin.Close()
-
-	fout, err := os.Create(out)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	defer fout.Close()
-
-	_, err = io.Copy(fout, fin)
-
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	return nil
-}
-
-// parseYAML parses YAML from reader to data structure
-func parseV1YAML(r io.Reader, str interface{}) error {
-	return yaml.NewDecoder(r).Decode(str)
-}
-
-func parseV1File(path string, cfg interface{}) error {
-	// open the configuration file
-	f, err := os.OpenFile(path, os.O_RDONLY|os.O_SYNC, 0)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			fmt.Printf("Config does not exist.  Create config? [Y|n]")
-			var answer string
-			fmt.Scanln(&answer)
-
-			if answer == "" || answer == "y" || answer == "Y" {
-				filename, err := initConfig(path)
-				if err != nil {
-					fmt.Println("Not able to create file")
-					fmt.Println(err)
-					panic(err)
-				}
-				fmt.Printf("Created %s.  Make sure to fill out the API keys for the services you want to use.\n", filename)
-				f, err = os.OpenFile(path, os.O_RDONLY|os.O_SYNC, 0)
-				if err != nil {
-					return err
-				}
-			} else {
-				answer = "N"
-			}
-
-		} else {
-			return err
-		}
-	}
-	defer f.Close()
-
-	// parse the file depending on the file type
-	switch ext := strings.ToLower(filepath.Ext(path)); ext {
-	case ".yml":
-		err = parseV1YAML(f, cfg)
-	default:
-		return fmt.Errorf("file format '%s' doesn't supported by the parser", ext)
-	}
-	if err != nil {
-		return fmt.Errorf("config file parsing error: %s", err.Error())
-	}
-	return nil
 }
 
 func contains(list []MalwareRepoType, x MalwareRepoType) bool {
