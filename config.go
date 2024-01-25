@@ -32,6 +32,7 @@ const (
 	Triage
 	UnpacMe
 	URLScanIO
+	VirusExchange
 	VirusTotal
 	VxShare
 
@@ -112,6 +113,9 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 		case URLScanIO:
 			found, filename = urlscanio(mcr.Host, mcr.Api, hash)
 			checkedRepo = URLScanIO
+		case VirusExchange:
+			found, filename = virusexchange(mcr.Host, mcr.Api, hash)
+			checkedRepo = VirusExchange
 		case AssemblyLine:
 			found, filename = assemblyline(mcr.Host, mcr.User, mcr.Api, mcr.IgnoreTLSErrors, hash)
 			checkedRepo = AssemblyLine
@@ -202,6 +206,8 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 		default_url = "https://www.filescan.io/api"
 	case URLScanIO:
 		default_url = "https://urlscan.io/downloads"
+	case VirusExchange:
+		default_url = "https://virus.exchange/api"
 	}
 	if default_url != "" {
 		fmt.Printf("Enter Host [ Press enter for default - %s ]:\n", default_url)
@@ -279,7 +285,8 @@ func (malrepo MalwareRepoType) String() string {
 		return "UploadAssemblyLine"
 	case UploadMWDB:
 		return "UploadMWDB"
-
+	case VirusExchange:
+		return "VirusExchange"
 	}
 	return "NotSupported"
 }
@@ -383,6 +390,8 @@ func getMalwareRepoByFlagName(name string) MalwareRepoType {
 		return URLScanIO
 	case strings.ToLower("al"):
 		return AssemblyLine
+	case strings.ToLower("ve"):
+		return VirusExchange
 	}
 	return NotSupported
 }
@@ -427,6 +436,8 @@ func getMalwareRepoByName(name string) MalwareRepoType {
 		return UploadAssemblyLine
 	case strings.ToLower("UploadMWDB"):
 		return UploadMWDB
+	case strings.ToLower("VirusExchange"):
+		return VirusExchange
 	}
 	return NotSupported
 }

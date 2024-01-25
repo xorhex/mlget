@@ -34,13 +34,7 @@ var uploadToAssemblyLineFlag bool
 var uploadToAssemblyLineAndDeleteFlag bool
 var forceResubmission bool
 
-/*
-var webserver bool
-var ip string
-var port int
-*/
-
-var version string = "3.3.0"
+var version string = "3.4.0"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")
@@ -56,9 +50,9 @@ func usage() {
 }
 
 func init() {
-	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - al (AssemblyLine)\n  - cs (Cape Sandbox)\n  - fs (FileScanIo)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tr (Triage)\n  - um (UnpacMe)\n  - us (URLScanIO)\n  - vt (VirusTotal)\n  - vx (VxShare)\nIf omitted, all services will be tried.")
+	flag.StringVar(&apiFlag, "from", "", "The service to download the malware from.\n  Must be one of:\n  - al (AssemblyLine)\n  - cs (Cape Sandbox)\n  - fs (FileScanIo)\n  - ha (Hybird Anlysis)\n  - iq (Inquest Labs)\n  - js (Joe Sandbox)\n  - mp (Malpedia)\n  - ms (Malshare)\n  - mb (Malware Bazaar)\n  - mw (Malware Database)\n  - os (Objective-See)\n  - ps (PolySwarm)\n  - tr (Triage)\n  - um (UnpacMe)\n  - us (URLScanIO)\n  -ve (VExchange)\n  - vt (VirusTotal)\n  - vx (VxShare)\nIf omitted, all services will be tried.")
 	flag.StringVar(&inputFileFlag, "read", "", "Read in a file of hashes (one per line)")
-	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (for later use with the --read flag)")
+	flag.BoolVar(&outputFileFlag, "output", false, "Write to a file the hashes not found (requires using --read)")
 	flag.BoolVar(&helpFlag, "help", false, "Print the help message")
 	flag.BoolVar(&checkConfFlag, "config", false, "Parse and print the config file")
 	flag.BoolVar(&AddConfigEntryFlag, "addtoconfig", false, "Add entry to the config file")
@@ -71,13 +65,10 @@ func init() {
 	flag.BoolVar(&forceResubmission, "f", false, "Force resubmission to AssemblyLine when the files already exists on the AssemblyLine instance.")
 	flag.StringSliceVar(&tagsFlag, "tag", []string{}, "Tag the sample when uploading to your own instance of MWDB.")
 	flag.StringSliceVar(&commentsFlag, "comment", []string{}, "Add comment to the sample when uploading to your own instance of MWDB.")
-	flag.BoolVar(&downloadOnlyFlag, "downloadonly", false, "Download from any source, including your personal instance of MWDB.\nWhen this flag is set; it will NOT update any output file with the hashes not found.\nAnd it will not upload to any of the UploadMWDB instances.")
+	flag.BoolVar(&downloadOnlyFlag, "downloadonly", false, "Download from any source, including your personal instance of MWDB.\nWhen this flag is set; it will NOT update any output file with the hashes not found.\nAnd it will not upload to any of the UploadMWDB.")
 	flag.BoolVar(&versionFlag, "version", false, "Print the version number")
 	flag.BoolVar(&noValidationFlag, "novalidation", false, "Turn off post download hash check verification")
 	flag.BoolVar(&precheckdir, "precheckdir", false, "Search current dir for files matching the hashes provided, if found don't redownload")
-	//flag.BoolVar(&webserver, "webserver", false, "Run the webserver to handle request via the web browser.")
-	//flag.StringVar(&ip, "bind", "127.0.0.1", "Bind to IP. Default is localhost")
-	//flag.IntVar(&port, "port", 8080, "Bind to port. Default is 8080")
 }
 
 func main() {

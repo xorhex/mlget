@@ -111,6 +111,16 @@ type MalpediaData struct {
 	FileBytes []byte
 }
 
+type VirusExchangeData struct {
+	Md5           string `json:"md5"`
+	Size          int    `json:"size"`
+	Type          string `json:"type"`
+	Sha512        string `json:"sha512"`
+	Sha256        string `json:"sha256"`
+	Sha1          string `json:"sha1"`
+	Download_Link string `json:"download_link"`
+}
+
 func loadObjectiveSeeJson(uri string) (ObjectiveSeeQuery, error) {
 
 	fmt.Printf("Downloading Objective-See Malware json from: %s\n\n", uri)
@@ -1415,6 +1425,101 @@ func assemblylineDownload(uri string, user string, api string, ignoretlserrors b
 		return false, ""
 	} else if response.StatusCode == http.StatusUnauthorized {
 		fmt.Printf("    [!] Not authorized.  Check the URL, User, and APIKey in the config.\n")
+		return false, ""
+	}
+
+	error = writeToFile(response.Body, hash.Hash)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+	fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
+	return true, hash.Hash
+}
+
+func virusexchange(uri string, api string, hash Hash) (bool, string) {
+	if api == "" {
+		fmt.Println("    [!] !! Missing Key !!")
+		return false, ""
+	}
+
+	if hash.HashType != sha256 {
+		fmt.Printf("    [!] VirusExchange only supports SHA256\n        Skipping\n")
+	}
+
+	request, error := http.NewRequest("GET", uri+"/samples/"+url.PathEscape(hash.Hash)+"/", nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("Authorization", "Bearer "+api)
+
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode == 404 {
+		return false, ""
+	} else if response.StatusCode == http.StatusForbidden {
+		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
+		return false, ""
+	}
+
+	if response.StatusCode == http.StatusOK {
+		byteValue, _ := io.ReadAll(response.Body)
+
+		var data = VirusExchangeData{}
+		error = json.Unmarshal(byteValue, &data)
+
+		var unmarshalTypeError *json.UnmarshalTypeError
+		if errors.As(error, &unmarshalTypeError) {
+			fmt.Printf("    [!] Failed unmarshaling json.  This could be due to the API changing or\n        just no data inside the data array was returned\n")
+			fmt.Printf("        %s\n", byteValue)
+
+		} else if error != nil {
+			fmt.Println(error)
+			return false, ""
+		}
+
+		if data.Download_Link == "" {
+			return false, ""
+		}
+		return virusexchangeDownload(data.Download_Link, hash)
+
+	}
+	// Sample not found
+	return false, ""
+}
+
+func virusexchangeDownload(uri string, hash Hash) (bool, string) {
+	request, error := http.NewRequest("GET", uri, nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusNotFound {
+		return false, ""
+	} else if response.StatusCode == http.StatusForbidden {
+		fmt.Printf("    [!] Not authorized for some reason.\n")
+		return false, ""
+	} else if response.StatusCode == http.StatusUnauthorized {
+		fmt.Printf("    [!] Not authorized for some reason\n")
 		return false, ""
 	}
 

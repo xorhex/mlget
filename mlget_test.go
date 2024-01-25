@@ -658,3 +658,38 @@ func TestAssemblyLine(t *testing.T) {
 	}
 
 }
+
+func TestVirusExchange(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	scfg, err := parseTestConfig("./mlget-test-config/samples.yaml", t.Name())
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	ht, _ := hashType(scfg.Hash)
+	hash := Hash{HashType: ht, Hash: scfg.Hash}
+
+	var osq ObjectiveSeeQuery
+	result, filename, _ := VirusExchange.QueryAndDownload(cfg, hash, false, osq)
+
+	if !result {
+		t.Errorf("VirusExchange failed")
+	} else {
+		valid, errmsg := hash.ValidateFile(filename)
+
+		if !valid {
+			os.Remove(filename)
+			t.Errorf(errmsg)
+		} else {
+			os.Remove(filename)
+		}
+	}
+
+}

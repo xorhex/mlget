@@ -55,3 +55,6 @@ test 19:
 test 20:
   name: TestTriageV2
   hash: 5eaaf8ac2d358c2d7065884b7994638fee3987f02474e54467f14b010a18d028
+test 21:
+  name: TestVirusExchange
+  hash: ad5156e1e0285de9348d9b2c4649d9f6f39bac89567f833b1a8ba3d26468fc84
