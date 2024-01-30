@@ -30,36 +30,15 @@
 
 Use mlget to query multiple sources for a given malware hash and download it.  The thought is to save time querying each source individually.
 
-Currently queries:
+### Usage Instructions
 
-  - cp (Cape Sandbox)
-  - fs (FileScanIO)
-  - ha (Hybrid Analysis)
-  - iq (Inquest Labs)
-  - js (Joe Sandbox)
-  - mp (Malpedia)
-  - ms (Malshare)
-  - mb (Malware Bazaar)
-  - mw (Malware Database)
-  - os (Objective-See)
-  - ps (PolySwarm)
-  - tg (Triage)
-  - us (URLScanIO)
-  - um (UnpacMe)
-  - vt (VirusTotal)
-  - vx (VxShare)
-
-Only Malware Bazaar and Objective-See does not require a key, the rest require a key.  The config file needs to be placed in the user's home directory (essentially where `os.UserHomeDir()` resolves to).
-
-### Overview + Build + Usage Instructions
-
-[Mlget Blog Post](https://blog.xorhex.com/blog/mlget-for-all-your-malware-download-needs/)
+[Mlget Blog Post](https://blog.xorhex.com/blog/mlget/)
 
 ### License
 
 MIT License
 
-Copyright (c) 2022 @xorhex
+Copyright (c) 2024 @xorhex
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

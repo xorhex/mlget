@@ -34,7 +34,7 @@ var uploadToAssemblyLineFlag bool
 var uploadToAssemblyLineAndDeleteFlag bool
 var forceResubmission bool
 
-var version string = "3.4.0"
+var version string = "3.4.1"
 
 func usage() {
 	fmt.Println("mlget - A command line tool to download malware from a variety of sources")

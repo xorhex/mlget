@@ -51,7 +51,7 @@ test 17:
   hash: 5b027ada26a610e97ab4ef9efb1118b377061712acec6db994d6aa1c78a332a8
 test 19:
   name: TestAssemblyLine
-  hash: 7cbf6cb53214f11904e63bb7493999a3b2e88b62
+  hash: b78e786091f017510b44137961f3074fe7d5f950
 test 20:
   name: TestTriageV2
   hash: 5eaaf8ac2d358c2d7065884b7994638fee3987f02474e54467f14b010a18d028

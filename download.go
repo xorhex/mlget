@@ -612,7 +612,7 @@ func polyswarmDownload(uri string, api string, hash Hash) (bool, string) {
 		}
 		fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
 		return true, hash.Hash
-	} else if response.StatusCode == http.StatusForbidden {
+	} else if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusUnauthorized {
 		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\n")
 		return false, ""
 	} else {
@@ -1384,9 +1384,14 @@ func assemblyline(uri string, user string, api string, ignoretlserrors bool, has
 		if data.Response.AL == nil {
 			return false, ""
 		}
-		hash.Hash = data.Response.AL.Items[0].Data.Sha256
-		hash.HashType = sha256
-		fmt.Printf("    [-] Using hash %s\n", hash.Hash)
+
+		if len(data.Response.AL.Items) > 0 {
+			hash.Hash = data.Response.AL.Items[0].Data.Sha256
+			hash.HashType = sha256
+			fmt.Printf("    [-] Using hash %s\n", hash.Hash)
+		} else {
+			return false, ""
+		}
 	}
 
 	return assemblylineDownload(uri, user, api, ignoretlserrors, hash)
