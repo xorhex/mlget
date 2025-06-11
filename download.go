@@ -15,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/yeka/zip"
 )
@@ -580,7 +581,7 @@ func polyswarm(uri string, api string, hash Hash) (bool, string) {
 }
 
 func polyswarmDownload(uri string, api string, hash Hash) (bool, string) {
-	query := "/download/" + url.PathEscape(hash.HashType.String()) + "/" + url.PathEscape(hash.Hash)
+	query := "/consumer/download/" + url.PathEscape(hash.HashType.String()) + "/" + url.PathEscape(hash.Hash)
 
 	_, error := url.ParseQuery(query)
 	if error != nil {
@@ -620,7 +621,7 @@ func polyswarmDownload(uri string, api string, hash Hash) (bool, string) {
 	}
 }
 
-func hybridAnlysis(uri string, api string, hash Hash, doNotExtract bool) (bool, string) {
+func hybridAnalysis(uri string, api string, hash Hash) (bool, string) {
 	if api == "" {
 		fmt.Println("    [!] !! Missing Key !!")
 		return false, ""
@@ -672,12 +673,12 @@ func hybridAnlysis(uri string, api string, hash Hash, doNotExtract bool) (bool, 
 	}
 
 	if hash.HashType == sha256 {
-		return hybridAnlysisDownload(uri, api, hash, doNotExtract)
+		return hybridAnalysisDownload(uri, api, hash)
 	}
 	return false, ""
 }
 
-func hybridAnlysisDownload(uri string, api string, hash Hash, extract bool) (bool, string) {
+func hybridAnalysisDownload(uri string, api string, hash Hash) (bool, string) {
 	request, error := http.NewRequest("GET", uri+"/overview/"+url.PathEscape(hash.Hash)+"/sample", nil)
 
 	request.Header.Set("accept", "application/gzip")
@@ -698,6 +699,9 @@ func hybridAnlysisDownload(uri string, api string, hash Hash, extract bool) (boo
 
 	if response.StatusCode == http.StatusForbidden {
 		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\nCould also be that the sample is not allowed to be downloaded.\n")
+		return false, ""
+	} else if response.StatusCode == http.StatusNotFound {
+		fmt.Printf("    [!] Hash not found")
 		return false, ""
 	} else if response.StatusCode != http.StatusOK {
 		return false, ""
@@ -812,52 +816,18 @@ func traigeDownload(uri string, api string, sampleId string, hash Hash) (bool, s
 		fmt.Println(error)
 		return false, ""
 	}
-	// Triage will download an archive file that contians the hash in question sometimes versus the actual sample being requested
-	hashMatch, _ := hash.ValidateFile(hash.Hash)
+	// Triage will download the sample directly - no password protected zip file.
+	hashMatch, dhash := hash.ValidateFile(hash.Hash)
 	if !hashMatch {
-		files, err := extractPwdZip(hash.Hash, "", false, hash)
-		if err != nil {
-			fmt.Println(error)
-			return false, ""
-		}
+		fmt.Printf("      [!] Sample ID %s (%s)\n          contains the file in question, further processing of the sample is needed to get the hash requested.\n", sampleId, dhash)
+		//ok := YesNoPrompt(fmt.Sprintf("      [?] Keep the file %s or delete it and continue looking for sample?", dhash), false)
+		//if ok {
+		return true, hash.Hash
+		//	} else {
+		//return false, ""
+		//}
 
-		found := false
-
-		fmt.Printf("      [-] The downloaded file appears to be a zip file in which the requested file should be located.\n")
-		for _, f := range files {
-			fmt.Printf("        [-] Checking file: %s\n", f.Name)
-			hashMatch, _ = hash.ValidateFile(f.Name)
-			if !hashMatch {
-				err = os.Remove(f.Name)
-				if err != nil {
-					fmt.Println("        [!] Error when deleting file: ", f.Name)
-					fmt.Println(err)
-				}
-			} else {
-				fmt.Printf("        [+] %s is hash %s\n", f.Name, hash.Hash)
-				err = os.Rename(f.Name, hash.Hash)
-				if err != nil {
-					fmt.Println("        [!] Error when renaming file: ", f.Name)
-					fmt.Println(err)
-				} else {
-					found = true
-				}
-			}
-		}
-		if !found {
-			fmt.Printf("        [!] Hash %s not found\n", hash.Hash)
-			err = os.Remove(hash.Hash)
-			if err != nil {
-				fmt.Println("        [!] Error when deleting file: ", hash.Hash)
-				fmt.Println(err)
-			}
-			return false, ""
-		} else {
-			fmt.Printf("      [+] Found %s\n", hash.Hash)
-			return true, hash.Hash
-		}
 	} else {
-		fmt.Printf("    [+] Downloaded %s\n", hash.Hash)
 		return true, hash.Hash
 	}
 }
@@ -905,7 +875,7 @@ func malshareDownload(uri string, api string, hash Hash) (bool, string) {
 	}
 }
 
-func malwareBazaar(uri string, hash Hash, doNotExtract bool, password string) (bool, string) {
+func malwareBazaar(uri string, api string, hash Hash, doNotExtract bool, password string) (bool, string) {
 	if hash.HashType != sha256 {
 		fmt.Printf("    [-] Looking up sha256 hash for %s\n", hash.Hash)
 
@@ -949,19 +919,26 @@ func malwareBazaar(uri string, hash Hash, doNotExtract bool, password string) (b
 	}
 
 	if hash.HashType == sha256 {
-		return malwareBazaarDownload(uri, hash, doNotExtract, password)
+		return malwareBazaarDownload(uri, api, hash, doNotExtract, password)
 	}
 	return false, ""
 }
 
-func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool, password string) (bool, string) {
+func malwareBazaarDownload(uri string, api string, hash Hash, doNotExtract bool, password string) (bool, string) {
 	query := "query=get_file&sha256_hash=" + hash.Hash
-	values, err := url.ParseQuery(query)
-	if err != nil {
-		fmt.Println(err)
+	values, error := url.ParseQuery(query)
+	if error != nil {
+		fmt.Println(error)
 		return false, ""
 	}
 
+	request, error := http.NewRequest("POST", uri, nil)
+	if error != nil {
+		fmt.Println(error)
+		return false, ""
+	}
+
+	request.Header.Set("Auth-Key", api)
 	client := &http.Client{}
 
 	response, err := client.PostForm(uri, values)
@@ -976,14 +953,13 @@ func malwareBazaarDownload(uri string, hash Hash, doNotExtract bool, password st
 		if response.StatusCode == http.StatusMethodNotAllowed {
 			if !strings.HasSuffix(uri, "/") {
 				fmt.Printf("    [!] Trying again with a trailing slash: %s/\n", uri)
-				return malwareBazaarDownload(uri+"/", hash, doNotExtract, password)
+				return malwareBazaarDownload(uri+"/", api, hash, doNotExtract, password)
 			} else {
 				fmt.Printf("    [!] Normally the response code: %s means that the provided URL %s needs a trailing slash (to avoid the redirect), but this already has a trailing slash.\nPlease file a bug report at https://github.com/xorhex/mlget/issues\n", response.Status, uri)
 			}
 		} else {
 			fmt.Printf("    [!] %s\n", response.Status)
 		}
-		return false, ""
 	}
 
 	err = writeToFile(response.Body, hash.Hash+".zip")
@@ -1107,6 +1083,9 @@ func vxsharedownload(uri string, api string, hash Hash, doNotExtract bool, passw
 	defer response.Body.Close()
 
 	if response.StatusCode == 404 {
+		return false, ""
+	} else if response.StatusCode == http.StatusInternalServerError {
+		fmt.Printf("    [!] Internal service error.  Skipping.\n")
 		return false, ""
 	} else if response.StatusCode == 204 {
 		fmt.Printf("    [!] Request rate limit exceeded. You are making more requests than are allowed or have exceeded your quota.\n")
@@ -1361,8 +1340,13 @@ func assemblyline(uri string, user string, api string, ignoretlserrors bool, has
 		client := &http.Client{Transport: tr}
 		response, error := client.Do(request)
 		if error != nil {
-			fmt.Println(error)
-			return false, ""
+			if errors.Is(error, syscall.ECONNREFUSED) {
+				fmt.Println("    [!] Connection Refused.  Is the service online?")
+				return false, ""
+			} else {
+				fmt.Println(error)
+				return false, ""
+			}
 		}
 		defer response.Body.Close()
 
@@ -1519,6 +1503,7 @@ func virusexchangeDownload(uri string, hash Hash) (bool, string) {
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusNotFound {
+		fmt.Printf("    [!] Invalid download link returned by the API.\n")
 		return false, ""
 	} else if response.StatusCode == http.StatusForbidden {
 		fmt.Printf("    [!] Not authorized for some reason.\n")

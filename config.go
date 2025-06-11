@@ -64,7 +64,7 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 		fmt.Printf("  [*] %s: %s\n", mcr.Type, mcr.Host)
 		switch malrepo {
 		case MalwareBazaar:
-			found, filename = malwareBazaar(mcr.Host, hash, doNotExtract, "infected")
+			found, filename = malwareBazaar(mcr.Host, mcr.Api, hash, doNotExtract, "infected")
 			checkedRepo = MalwareBazaar
 		case MWDB:
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
@@ -79,7 +79,7 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 			found, filename = inquestlabs(mcr.Host, mcr.Api, hash)
 			checkedRepo = InQuest
 		case HybridAnalysis:
-			found, filename = hybridAnlysis(mcr.Host, mcr.Api, hash, doNotExtract)
+			found, filename = hybridAnalysis(mcr.Host, mcr.Api, hash)
 			checkedRepo = HybridAnalysis
 		case Polyswarm:
 			found, filename = polyswarm(mcr.Host, mcr.Api, hash)
@@ -126,8 +126,7 @@ func (malrepo MalwareRepoType) QueryAndDownload(repos []RepositoryConfigEntry, h
 			found, filename = mwdb(mcr.Host, mcr.Api, hash)
 			checkedRepo = UploadMWDB
 		}
-		// So some repos we can't download from but we want to know that it exists at that service
-		// At the moment, this is just Any.Run but suspect more will be added as time goes on
+
 		if found {
 			return found, filename, checkedRepo
 		}
@@ -139,10 +138,6 @@ func (malrepo MalwareRepoType) VerifyRepoParams(repo RepositoryConfigEntry) bool
 	switch malrepo {
 	case NotSupported:
 		return false
-	case MalwareBazaar:
-		if repo.Host != "" {
-			return true
-		}
 	case ObjectiveSee:
 		if repo.Host != "" {
 			return true
@@ -181,7 +176,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 	case MWDB:
 		default_url = "https://mwdb.cert.pl/api"
 	case CapeSandbox:
-		default_url = "https://www.capesandbox.com/apiv2"
+		default_url = ""
 	case JoeSandbox:
 		default_url = "https://jbxcloud.joesecurity.org/api/v2"
 	case InQuest:
@@ -193,7 +188,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 	case VirusTotal:
 		default_url = "https://www.virustotal.com/api/v3"
 	case Polyswarm:
-		default_url = "https://api.polyswarm.network/v2"
+		default_url = "https://api.polyswarm.network/v3"
 	case ObjectiveSee:
 		default_url = "https://objective-see.com/malware.json"
 	case UnpacMe:
@@ -237,7 +232,7 @@ func (malrepo MalwareRepoType) CreateEntry() (RepositoryConfigEntry, error) {
 			fmt.Println("Invalid option entered")
 		}
 	}
-	if malrepo != MalwareBazaar && malrepo != ObjectiveSee {
+	if malrepo != ObjectiveSee {
 		fmt.Println("Enter API Key:")
 		fmt.Print(">> ")
 		fmt.Scanln(&api)

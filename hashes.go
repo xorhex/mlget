@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto"
 	"errors"
 	"fmt"
@@ -160,22 +161,12 @@ func (h Hash) Validate(bytes []byte) (bool, string) {
 }
 
 func deleteInvalidFile(filename string) {
-	if !alwaysDeleteInvalidFile {
-		var delete_file string
-		fmt.Printf("    [?] Delete invalid file? [A/Y/n] Always delete/Yes, this time/No, not this time\n")
-		fmt.Scanln(&delete_file)
-		if strings.ToUpper(delete_file) == "Y" || delete_file == "" || strings.ToUpper(delete_file) == "A" {
-			os.Remove(filename)
-			fmt.Printf("    [!] Deleted invalid file\n")
-			if strings.ToUpper(delete_file) == "A" {
-				alwaysDeleteInvalidFile = true
-			}
-		} else {
-			fmt.Printf("    [!] Keeping invalid file\n")
-		}
-	} else {
+	ok := YesNoAlwaysDeleteInvalidFilePrompt("    [?] Delete invalid file?", true)
+	if ok {
 		os.Remove(filename)
 		fmt.Printf("    [!] Deleted invalid file\n")
+	} else {
+		fmt.Printf("    [!] Keeping invalid file\n")
 	}
 }
 
@@ -219,4 +210,38 @@ func extractHashes(text string) ([]string, error) {
 	}
 
 	return hashes, nil
+}
+
+func YesNoAlwaysDeleteInvalidFilePrompt(label string, def bool) bool {
+	if alwaysDeleteInvalidFile {
+		return true
+	}
+
+	choices := "a - always /Y - Yes /n - no"
+	if !def {
+		choices = "a - always /y - yes /N - No"
+	}
+
+	r := bufio.NewReader(os.Stdin)
+	var s string
+
+	for {
+		fmt.Fprintf(os.Stderr, "%s (%s) ", label, choices)
+		s, _ = r.ReadString('\n')
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return def
+		}
+		s = strings.ToLower(s)
+		if s == "y" || s == "yes" || s == "Y" {
+			return true
+		}
+		if s == "n" || s == "no" || s == "N" {
+			return false
+		}
+		if s == "a" || s == "always" || s == "A" {
+			alwaysDeleteInvalidFile = true
+			return true
+		}
+	}
 }

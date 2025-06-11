@@ -54,7 +54,13 @@ test 19:
   hash: b78e786091f017510b44137961f3074fe7d5f950
 test 20:
   name: TestTriageV2
-  hash: 5eaaf8ac2d358c2d7065884b7994638fee3987f02474e54467f14b010a18d028
+  hash: 0d8d46ec44e737e6ef6cd7df8edf95d83807e84be825ef76089307b399a6bcbb 
 test 21:
   name: TestVirusExchange
-  hash: ad5156e1e0285de9348d9b2c4649d9f6f39bac89567f833b1a8ba3d26468fc84
+  hash: 5d11b9be5daa65fe010cc7900d5d5eead7f62a7885e862a5971a005856ae9878 
+test 22:
+  name: TestHybridAnalysisNotFound
+  hash: fc17c021f18ec73d1544ad46dde6a1f1949f126bf3e75f97e241f982e2b07c86
+test 23:
+  name: TestVirusExchangeV2
+  hash: 0cacdb88b24bd34b9d8ef600b06814f76206e60e70f975c8e4bdaa1ab7cebb80 

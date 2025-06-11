@@ -350,6 +350,31 @@ func TestHybridAnalysis(t *testing.T) {
 	}
 }
 
+func TestHybridAnalysisNotFound(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	scfg, err := parseTestConfig("./mlget-test-config/samples.yaml", t.Name())
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	ht, _ := hashType(scfg.Hash)
+	hash := Hash{HashType: ht, Hash: scfg.Hash}
+
+	var osq ObjectiveSeeQuery
+	result, _, _ := HybridAnalysis.QueryAndDownload(cfg, hash, false, osq)
+
+	if result {
+		t.Errorf("HybridAnalysis failed")
+	}
+}
+
 func TestTriage(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
@@ -380,6 +405,38 @@ func TestTriage(t *testing.T) {
 			t.Errorf(errmsg)
 		} else {
 			os.Remove(hash.Hash)
+		}
+	}
+}
+
+func TestTriageV2(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	scfg, err := parseTestConfig("./mlget-test-config/samples.yaml", t.Name())
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	ht, _ := hashType(scfg.Hash)
+	hash := Hash{HashType: ht, Hash: scfg.Hash}
+
+	var osq ObjectiveSeeQuery
+	result, filename, _ := Triage.QueryAndDownload(cfg, hash, true, osq)
+
+	if !result {
+		t.Errorf("Triage failed")
+	} else {
+		if filename == "0d8d46ec44e737e6ef6cd7df8edf95d83807e84be825ef76089307b399a6bcbb" {
+			os.Remove(hash.Hash)
+		} else {
+			os.Remove(hash.Hash)
+			t.Errorf("File name not found")
 		}
 	}
 }
@@ -679,6 +736,39 @@ func TestVirusExchange(t *testing.T) {
 	var osq ObjectiveSeeQuery
 	result, filename, _ := VirusExchange.QueryAndDownload(cfg, hash, false, osq)
 
+	if result {
+		t.Errorf("VirusExchange was a success - this is unexpected. This means the link returned by the API was fixed or there is another issue going on.")
+		valid, errmsg := hash.ValidateFile(filename)
+
+		if !valid {
+			os.Remove(filename)
+			t.Errorf(errmsg)
+		} else {
+			os.Remove(filename)
+		}
+	}
+}
+
+func TestVirusExchangeV2(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	scfg, err := parseTestConfig("./mlget-test-config/samples.yaml", t.Name())
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	ht, _ := hashType(scfg.Hash)
+	hash := Hash{HashType: ht, Hash: scfg.Hash}
+
+	var osq ObjectiveSeeQuery
+	result, filename, _ := VirusExchange.QueryAndDownload(cfg, hash, false, osq)
+
 	if !result {
 		t.Errorf("VirusExchange failed")
 	} else {
@@ -691,5 +781,4 @@ func TestVirusExchange(t *testing.T) {
 			os.Remove(filename)
 		}
 	}
-
 }
