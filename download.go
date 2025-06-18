@@ -57,6 +57,10 @@ type MalwareBazarQueryData struct {
 	File_name     string `json:"file_name"`
 }
 
+type MalwareBazaarQueryStatus struct {
+	Status string `json:"query_status"`
+}
+
 type AssemblyLineQuery struct {
 	Error_message  string                     `json:"api_error_message"`
 	Response       *AssemblyLineQueryResponse `json:"api_response"`
@@ -958,33 +962,43 @@ func malwareBazaarDownload(uri string, api string, hash Hash, doNotExtract bool,
 				fmt.Printf("    [!] Normally the response code: %s means that the provided URL %s needs a trailing slash (to avoid the redirect), but this already has a trailing slash.\nPlease file a bug report at https://github.com/xorhex/mlget/issues\n", response.Status, uri)
 			}
 		} else {
-			fmt.Printf("    [!] %s\n", response.Status)
-		}
-	}
+			byteValue, _ := io.ReadAll(response.Body)
 
-	err = writeToFile(response.Body, hash.Hash+".zip")
-	if err != nil {
-		fmt.Println(err)
-		return false, ""
-	}
+			var data = MalwareBazaarQueryStatus{}
+			error = json.Unmarshal(byteValue, &data)
 
-	fmt.Printf("    [+] Downloaded %s\n", hash.Hash+".zip")
-	if doNotExtract {
-		return true, hash.Hash + ".zip"
-	} else {
-		fmt.Println("    [-] Extracting...")
-		files, err := extractPwdZip(hash.Hash+".zip", password, true, hash)
-		if err != nil {
-			fmt.Println(err)
-			return false, ""
-		} else {
-			for _, f := range files {
-				fmt.Printf("    [-] Extracted %s\n", f.Name)
+			if error == nil {
+				if data.Status == "file_not_found" {
+					return false, ""
+				}
+			} else {
+				err = writeToFile(io.NopCloser(bytes.NewReader(byteValue)), hash.Hash+".zip")
+				if err != nil {
+					fmt.Println(err)
+					return false, ""
+				}
+
+				fmt.Printf("    [+] Downloaded %s\n", hash.Hash+".zip")
+				if doNotExtract {
+					return true, hash.Hash + ".zip"
+				} else {
+					fmt.Println("    [-] Extracting...")
+					files, err := extractPwdZip(hash.Hash+".zip", password, true, hash)
+					if err != nil {
+						fmt.Println(err)
+						return false, ""
+					} else {
+						for _, f := range files {
+							fmt.Printf("    [-] Extracted %s\n", f.Name)
+						}
+					}
+					os.Remove(hash.Hash + ".zip")
+					return true, hash.Hash
+				}
 			}
 		}
-		os.Remove(hash.Hash + ".zip")
-		return true, hash.Hash
 	}
+	return false, ""
 }
 
 func filescanio(uri string, api string, hash Hash, doNotExtract bool, password string) (bool, string) {

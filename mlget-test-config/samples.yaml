@@ -64,3 +64,6 @@ test 22:
 test 23:
   name: TestVirusExchangeV2
   hash: 0cacdb88b24bd34b9d8ef600b06814f76206e60e70f975c8e4bdaa1ab7cebb80 
+test 24:
+  name: TestMalwareBazaarNotFound
+  hash: fee889e9518d1c660bd6fa331c19aabada7eeff8f1c99f2ef4d64c662ed5805a 

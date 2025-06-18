@@ -509,6 +509,32 @@ func TestMalwareBazaar(t *testing.T) {
 	}
 }
 
+func TestMalwareBazaarNotFound(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	scfg, err := parseTestConfig("./mlget-test-config/samples.yaml", t.Name())
+	if err != nil {
+		log.Fatal()
+		t.Errorf("%v", err)
+	}
+
+	ht, _ := hashType(scfg.Hash)
+	hash := Hash{HashType: ht, Hash: scfg.Hash}
+
+	var osq ObjectiveSeeQuery
+	result, filename, _ := MalwareBazaar.QueryAndDownload(cfg, hash, false, osq)
+
+	if result {
+		os.Remove(filename)
+		t.Errorf("MalwareBazaar failed")
+	}
+}
+
 func TestMalpedia(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	cfg, err := LoadConfig(path.Join(home, ".mlget.yml"))
