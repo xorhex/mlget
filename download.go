@@ -705,7 +705,7 @@ func hybridAnalysisDownload(uri string, api string, hash Hash) (bool, string) {
 		fmt.Printf("    [!] Not authorized.  Check the URL and APIKey in the config.\nCould also be that the sample is not allowed to be downloaded.\n")
 		return false, ""
 	} else if response.StatusCode == http.StatusNotFound {
-		fmt.Printf("    [!] Hash not found")
+		fmt.Printf("    [!] Hash not found\n")
 		return false, ""
 	} else if response.StatusCode != http.StatusOK {
 		return false, ""
