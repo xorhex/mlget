@@ -67,3 +67,6 @@ test 23:
 test 24:
   name: TestMalwareBazaarNotFound
   hash: fee889e9518d1c660bd6fa331c19aabada7eeff8f1c99f2ef4d64c662ed5805a 
+test 25:
+  name: TestMalwareBazaarMD5
+  hash: 9078dcd62129e872c84ba4bc6574f607

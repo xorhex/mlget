@@ -46,7 +46,7 @@ type HybridAnalysisQuery struct {
 }
 
 type MalwareBazarQuery struct {
-	Data *MalwareBazarQueryData `json:"data"`
+	Data []MalwareBazarQueryData `json:"data"`
 }
 
 type MalwareBazarQueryData struct {
@@ -883,15 +883,24 @@ func malwareBazaar(uri string, api string, hash Hash, doNotExtract bool, passwor
 	if hash.HashType != sha256 {
 		fmt.Printf("    [-] Looking up sha256 hash for %s\n", hash.Hash)
 
-		query := "query=get_file&hash=" + hash.Hash
+		query := "query=get_info&hash=" + url.QueryEscape(hash.Hash)
 		values, error := url.ParseQuery(query)
 		if error != nil {
 			fmt.Println(error)
 			return false, ""
 		}
 
+		request, err := http.NewRequest("POST", uri, strings.NewReader(values.Encode()))
+		if err != nil {
+			fmt.Println(err)
+			return false, ""
+		}
+
+		request.Header.Set("Auth-Key", api)
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
 		client := &http.Client{}
-		response, error := client.PostForm(uri, values)
+		response, error := client.Do(request)
 		if error != nil {
 			fmt.Println(error)
 			return false, ""
@@ -916,7 +925,7 @@ func malwareBazaar(uri string, api string, hash Hash, doNotExtract bool, passwor
 		if data.Data == nil {
 			return false, ""
 		}
-		hash.Hash = data.Data.Sha256_hash
+		hash.Hash = data.Data[0].Sha256_hash
 		hash.HashType = sha256
 		fmt.Printf("    [-] Using hash %s\n", hash.Hash)
 
@@ -929,32 +938,33 @@ func malwareBazaar(uri string, api string, hash Hash, doNotExtract bool, passwor
 }
 
 func malwareBazaarDownload(uri string, api string, hash Hash, doNotExtract bool, password string) (bool, string) {
-	query := "query=get_file&sha256_hash=" + hash.Hash
+	query := "query=get_file&sha256_hash=" + url.QueryEscape(hash.Hash)
 	values, error := url.ParseQuery(query)
 	if error != nil {
 		fmt.Println(error)
 		return false, ""
 	}
 
-	request, error := http.NewRequest("POST", uri, nil)
-	if error != nil {
-		fmt.Println(error)
+	request, err := http.NewRequest("POST", uri, strings.NewReader(values.Encode()))
+	if err != nil {
+		fmt.Println(err)
 		return false, ""
 	}
 
 	request.Header.Set("Auth-Key", api)
-	client := &http.Client{}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	response, err := client.PostForm(uri, values)
-	if err != nil {
-		fmt.Println(err)
+	client := &http.Client{}
+	response, error := client.Do(request)
+	if error != nil {
+		fmt.Println(error)
 		return false, ""
 	}
 
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusUnauthorized {
-		fmt.Printf("    [!] Unauthorized - correct API key and try again\n")
+		fmt.Printf("    [!] Unauthorized - Correct API key and try again\n")
 		return false, ""
 	}
 
