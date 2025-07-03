@@ -953,6 +953,11 @@ func malwareBazaarDownload(uri string, api string, hash Hash, doNotExtract bool,
 
 	defer response.Body.Close()
 
+	if response.StatusCode == http.StatusUnauthorized {
+		fmt.Printf("    [!] Unauthorized - correct API key and try again\n")
+		return false, ""
+	}
+
 	if response.Header["Content-Type"][0] == "application/json" {
 		if response.StatusCode == http.StatusMethodNotAllowed {
 			if !strings.HasSuffix(uri, "/") {
